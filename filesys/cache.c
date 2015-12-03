@@ -3,6 +3,20 @@
 #include "threads/malloc.h"
 #include <list.h>
 
+
+/* ####################################################
+ * #############        PROTOTYPES      ###############
+ * ####################################################
+ */
+
+CacheUnit *cache_push(block_sector_t sector, bool);
+
+
+/* ####################################################
+ * ############       FUNCTIONS         ###############
+ * ####################################################
+ */
+
 /* Initialize cache */
 void cache_init (void)
 {
@@ -20,7 +34,7 @@ void cache_init (void)
 
 
 /* Get sector from cache, write it in cache if not already present */
-CacheUnit *cache_get_elem (block_sector_t sector, bool to_write)
+CacheUnit *cache_get_block (block_sector_t sector, bool to_write)
 {
     lock_acquire(&cache_lock);
     
@@ -44,7 +58,7 @@ CacheUnit *cache_get_elem (block_sector_t sector, bool to_write)
 }
 
 /* Pull sector from disk, allocate it to a buffer unit and add it to the buffer */
-struct cache_elem* cache_push (block_sector_t sector, bool to_write)
+CacheUnit* cache_push (block_sector_t sector, bool to_write)
 {
     CacheUnit *cu;
     /* Decision to make CacheUnit from scratch for evict */
