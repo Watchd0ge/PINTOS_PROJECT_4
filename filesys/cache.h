@@ -57,12 +57,7 @@ void        cache_init (void);
  */
 CacheUnit * cache_get_block (block_sector_t sector, bool writing);
 
-/* Allocate a buffer unit for a sector. Evict if needed. Return the buffer unit */
-//CacheUnit * cache_push (block_sector_t sector, bool writing);
-
-CacheUnit * cache_evict (void);
 void        cache_backup (bool shutdown);
-void        cache_read_ahead (void *sec);
-void        cache_ahead (block_sector_t sec);
+void        cache_read_ahead (block_sector_t sec);
 
 #endif /* filesys/cache.h */

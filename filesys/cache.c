@@ -1,6 +1,7 @@
 #include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 #include <list.h>
 
 
@@ -10,7 +11,9 @@
  */
 
 CacheUnit *cache_push(block_sector_t sector, bool);
-
+CacheUnit * cache_evict (void);
+void specialised_cache_get_block (block_sector_t sector);
+void cache_read_ahead_daemon (void *sector);
 
 /* ####################################################
  * ############       FUNCTIONS         ###############
@@ -30,6 +33,7 @@ void cache_init (void)
 
     /* CONDITION VARIABLES */
     cond_init (&read_not_empty);
+    thread_create("read_ahead_daemon", 0, cache_read_ahead_daemon, NULL);
 }
 
 
@@ -51,9 +55,9 @@ CacheUnit *cache_get_block (block_sector_t sector, bool to_write)
         }
     }
     /* Otherwise we are going to pull it from disk and add it to the buffer */
-    cu = cache_push (sector, to_write); 
-    
+    cu = cache_push (sector, to_write);
     lock_release (&cache_lock);
+    cache_read_ahead(sector + 1);
     return cu;
 }
 
@@ -146,7 +150,7 @@ typedef struct read_elem
 } ReadAheadUnit;
 
 /* Cache Read Ahead scheduler */
-void cache_ahead (block_sector_t sector)
+void cache_read_ahead (block_sector_t sector)
 {
     ReadAheadUnit *read = (ReadAheadUnit *) malloc (sizeof (ReadAheadUnit));
     
@@ -163,16 +167,36 @@ void cache_ahead (block_sector_t sector)
 }
 
 /* Read Ahead Daemon : Constantly On */
-void cache_read_ahead (void *sec UNUSED)
+void cache_read_ahead_daemon (void *sec UNUSED)
 {
     while (true){
         lock_acquire (&read_lock);
         while (list_empty (&read_list)){
             cond_wait (&read_not_empty, &read_lock);
         }
+        PANIC("WE GOT IN");
         ReadAheadUnit *read = list_entry (list_pop_front (&read_list), ReadAheadUnit, elem);
-        lock_release (&read_lock);
-        free (read); // Need to hook this up to get cache
+        lock_release (&read_lock); // Need to hook this up to get cache
+        specialised_cache_get_block(read->sector);
+        free(read);
     }
 }
 
+/* Get sector from cache, write it in cache if not already present */
+void specialised_cache_get_block (block_sector_t sector)
+{
+    lock_acquire(&cache_lock);
+    CacheUnit *cu;
+    struct list_elem *unit;
+    /* Check if the sector is already in the buffer */
+    for (unit = list_begin (&cache_list); unit != list_end (&cache_list); unit = list_next (unit)){
+        cu = list_entry(unit, CacheUnit, c_elem);
+        if (cu->sector == sector){
+            cu->accessed = false;
+            lock_release (&cache_lock);
+        }
+    }
+    /* Otherwise we are going to pull it from disk and add it to the buffer */
+    cu = cache_push (sector, false); 
+    lock_release (&cache_lock);
+}
