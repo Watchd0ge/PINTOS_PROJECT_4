@@ -8,24 +8,26 @@
 
 #define MAX_SIZE 64
 #define BUFFER_SIZE 64
+#define CACHE_SIZE 64
+
+/* #########################################################
+ * ############     CACHE BUFFER ATTRIBUTES     ############
+ * #########################################################
+ */
+
 
 /* List of the cache blocks */
 struct list cache_list;
 
-typedef struct CacheUnit_ {
-    block_sector_t sector;
-    bool dirty;
-    bool accessed;
-    int servicing;
-    uint8_t block[BLOCK_SECTOR_SIZE];
+/* Cache entry */
+typedef struct cache_elem {
+   uint8_t block[BLOCK_SECTOR_SIZE];
+   block_sector_t sector;
+   bool dirty;
+   bool accessed;
+   int servicing;
+  struct list_elem c_elem;
 } CacheUnit;
-
-typedef struct CacheBuffer_ {
-    CacheUnit * buffer[BUFFER_SIZE];
-    Lock cache_lock;
-} CacheBuffer;
-
-CacheBuffer filesys_cache;
 
 /* Cache size */
 int cache_size;
@@ -42,22 +44,25 @@ struct lock read_lock;
 /* Read ahead condition */
 struct condition read_not_empty;
 
-/* Cache entry */
-typedef struct cache_elem {
-  uint8_t block[BLOCK_SECTOR_SIZE];
-  block_sector_t sector;
-  bool dirty;
-  bool accessed;
-  int servicing;
-  struct list_elem c_elem;
-};
+/* ##########################################################
+ * #############        PUBLIC FUNCTIONS        #############
+ * ##########################################################
+ */
 
-void cache_init (void);
-struct cache_elem* cache_get_elem (block_sector_t sector, bool writing);
-struct cache_elem* cache_push (block_sector_t sector, bool writing);
-struct cache_elem* cache_evict (void);
-void cache_backup (bool shutdown);
-void cache_read_ahead (void *sec);
-void cache_ahead (block_sector_t sec);
+/* Initialise the cache buffer list and the locks */
+void    cache_init (void);
+
+/* Fetch a block from the cache. If it is not in there then it will fetch from disk
+ * Cache acts as the abstraction layer between filesystem and disk
+ */
+struct  cache_elem* cache_get_elem (block_sector_t sector, bool writing);
+
+/* Allocate a buffer unit for a sector. Evict if needed. Return the buffer unit */
+struct  cache_elem* cache_push (block_sector_t sector, bool writing);
+
+struct  cache_elem* cache_evict (void);
+void    cache_backup (bool shutdown);
+void    cache_read_ahead (void *sec);
+void    cache_ahead (block_sector_t sec);
 
 #endif /* filesys/cache.h */

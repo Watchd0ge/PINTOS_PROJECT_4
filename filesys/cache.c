@@ -13,101 +13,122 @@ struct read_elem
 /* Initialize cache */
 void cache_init (void)
 {
-  cache_size = 0;
-  list_init (&cache_list);
-  list_init (&read_list);
-  lock_init (&cache_lock);
-  lock_init (&read_lock);
-  cond_init (&read_not_empty);
+    /* BUFFERS */    
+    list_init (&cache_list);
+    list_init (&read_list);
+    
+    /* BUFFER LOCKS */
+    lock_init (&cache_lock);
+    lock_init (&read_lock);
+
+    /* CONDITION VARIABLES */
+    cond_init (&read_not_empty);
 }
+
 
 /* Get sector from cache, write it in cache if not already present */
-struct cache_elem* cache_get_elem (block_sector_t sector, bool writing)
+CacheUnit *cache_get_elem (block_sector_t sector, bool to_write)
 {
-  struct cache_elem *c;
-  struct list_elem *i;
-  lock_acquire(&cache_lock);
-  for (i = list_begin (&cache_list); i != list_end (&cache_list); i = list_next (i)){
-    c = list_entry(i, struct cache_elem, c_elem);
-    if (c->sector == sector){
-      c->dirty |= writing;
-      c->accessed = true;
-      lock_release (&cache_lock);
-      return c;
+    lock_acquire(&cache_lock);
+    
+    CacheUnit *cu;
+    struct list_elem *unit;
+    /* Check if the sector is already in the buffer */
+    for (unit = list_begin (&cache_list); unit != list_end (&cache_list); unit = list_next (unit)){
+        cu = list_entry(unit, CacheUnit, c_elem);
+        if (cu->sector == sector){
+            cu->dirty = !to_write;
+            cu->accessed = true;
+            lock_release (&cache_lock);
+            return cu;
+        }
     }
-  }
-  c = cache_push (sector, writing);
-  lock_release (&cache_lock);
-  return c;
+    /* Otherwise we are going to pull it from disk and add it to the buffer */
+    cu = cache_push (sector, to_write); 
+    
+    lock_release (&cache_lock);
+    return cu;
 }
 
-/* Write element into cache */
-struct cache_elem* cache_push (block_sector_t sector, bool writing)
+/* Pull sector from disk, allocate it to a buffer unit and add it to the buffer */
+struct cache_elem* cache_push (block_sector_t sector, bool to_write)
 {
-  struct cache_elem *c;
-  if (cache_size < MAX_SIZE){
-    cache_size++;
-    c = malloc (sizeof (struct cache_elem));
-    if (!c){
-      return NULL;
+    CacheUnit *cu;
+    /* Decision to make CacheUnit from scratch for evict */
+    if (cache_size < CACHE_SIZE)
+    {
+        /* We have space in our cache still so we make our own*/
+        cache_size++;
+        cu = malloc (sizeof (CacheUnit));
+        if (cu == NULL){ PANIC("NO MORE MEMORY FOR CACHE UNITS"); }
+        else { list_push_back(&cache_list, &cu->c_elem);}
+  
+    } else {
+        /* We dont' have space in our cache so we evict. Return a CacheUnit we can use.*/
+        cu = cache_evict ();
     }
-    list_push_back(&cache_list, &c->c_elem);
-  }
-  else{
-    c = cache_evict ();
-  }
-  c->sector = sector;
-  block_read (fs_device, c->sector, &c->block);
-  c->dirty = writing;
-  c->accessed = true;
-  return c;
+
+    /* Update our cacheunit */
+    cu->sector = sector;
+    cu->dirty = to_write;
+    cu->accessed = true;
+    block_read (fs_device, sector, &cu->block);
+    return cu;
 }
 
-/* Eviction algorithm for cache */
-struct cache_elem* cache_evict (void)
+/* 2nd Chance Algorithm Eviction */
+CacheUnit *cache_evict (void)
 {
-  struct cache_elem *c;
-  struct list_elem *i;
-  bool evicted = false;
-  for (i = list_begin (&cache_list); i != list_end (&cache_list); i = list_next (i)){
-    c = list_entry(i, struct cache_elem, c_elem);
-    if (c->accessed){
-      c->accessed = false;
+    CacheUnit *cu;
+    struct list_elem *i;
+
+    bool loop = true;
+    while (loop) {
+        for (i = list_begin (&cache_list); i != list_end (&cache_list); i = list_next (i)) {
+            cu = list_entry(i, CacheUnit, c_elem);
+            if (cu->accessed) {
+                cu->accessed = false;
+            } else {
+                if (cu->dirty) {
+                    block_write(fs_device, cu->sector, &cu->block);
+                    cu->dirty = false;
+                }
+                loop = false; 
+                break;
+            }
+        }
     }
-    else {
-      if (c->dirty){
-        block_write(fs_device, c->sector, &c->block);
-      }
-      evicted = true; 
-      break;
-    }
-  }
-  if (!evicted) {
-    c = cache_evict ();
-  }
-  return c;
+    return cu;
 }
 
-/* Copy content of the cache to disk */
+/* Flush the cache. If shutdown then free everything as well */
 void cache_backup (bool shutdown)
 {
-  lock_acquire(&cache_lock);
-  struct list_elem *next;
-  struct list_elem *i = list_begin (&cache_list);
-  while (i != list_end (&cache_list)){
-    next = list_next (i);
-    struct cache_elem *c = list_entry (i, struct cache_elem, c_elem);
-    if (c->dirty){
-      block_write (fs_device, c->sector, &c->block);
-      c->dirty = false;
+    lock_acquire(&cache_lock);
+    struct list_elem *i = NULL;
+    for (i = list_begin (&cache_list) ;
+         i != list_end (&cache_list);
+         i = list_next (i))
+    {
+        CacheUnit *cu = list_entry (i, CacheUnit, c_elem);
+        if (cu->dirty){
+            block_write (fs_device, cu->sector, &cu->block);
+            cu->dirty = false;
+        }
     }
-    if (shutdown){
-      list_remove(&c->c_elem);
-      free(c);
+
+    if (shutdown == true) {
+        struct list_elem * next = NULL;
+        struct list_elem * i = list_begin (&cache_list);
+        CacheUnit * cu = NULL;
+        while (i != list_end(&cache_list)) {
+            cu = list_entry(i, CacheUnit, c_elem); 
+            next = list_remove(i);
+            free (cu);
+            i = next;
+        }
     }
-    i = next;
-  }
-  lock_release (&cache_lock);
+    lock_release (&cache_lock);
 }
 
 /* Cache read-ahead process */
