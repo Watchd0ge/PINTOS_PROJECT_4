@@ -99,7 +99,8 @@ CacheUnit * cache_get_block (block_sector_t sector, bool exclusion) {
         if (filesys_cache->buffer[i]->disk_sector_id == sector) {
             // TODO: Do we need to consider servicing number here?
             return filesys_cache->buffer[i];
-        }   
+        }
+        i++;
     }
     // Else we make a new one and add it to the buffer
     CacheUnit * cu = malloc (sizeof (CacheUnit));
@@ -144,6 +145,7 @@ int run_eviction_algorithm(){
                 loop = false;
                 break;
             }
+            i++;
         }
     }
     free (filesys_cache->buffer[i]);
@@ -152,12 +154,13 @@ int run_eviction_algorithm(){
 }
 
 void cache_shutdown (){
-    lock_acquire(&filesys_cache->buffer_lock);
     cache_buffer_flush();                         // We iterate through the array once writing everything that is dirty
     int i = 0;
+    lock_acquire(&filesys_cache->buffer_lock);
     while (i < CACHE_SIZE){                     // We go through and free everything now indiscriminately
         free(filesys_cache->buffer[i]);
         filesys_cache->buffer[i] = NULL;
+        i++;
     }
     lock_release(&filesys_cache->buffer_lock);
     return;
@@ -167,12 +170,15 @@ void cache_shutdown (){
 void cache_buffer_flush(){
     lock_acquire(&filesys_cache->buffer_lock);
     int i = 0;
+    CacheUnit * cu = filesys_cache->buffer[i];
     while (i < CACHE_SIZE) {
-        CacheUnit * cu = filesys_cache->buffer[i];
-        if (cu->dirty == true){
-            block_write(fs_device, cu->disk_sector_id, &cu->block);
-            cu->dirty = true;
+        if (cu != NULL){
+            if (cu->dirty == true){
+                block_write(fs_device, cu->disk_sector_id, &cu->block);
+                cu->dirty = false;
+            }
         }
+        i++;
     }
     lock_release(&filesys_cache->buffer_lock);
     return;
@@ -182,6 +188,7 @@ void *cache_zero_block (CacheUnit * cu){
     int i = 0;
     while (i < BLOCK_SIZE){
         cu->block[i] = 0;
+        i++;
     }
     return &cu->block;
 }
