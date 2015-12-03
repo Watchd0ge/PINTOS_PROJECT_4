@@ -1,208 +1,139 @@
-/* Jun-Yi Lau
- * 49002253
- * PINTOS PROEJCT 4
- * CACHE.C
- * Functions that will serve as the boundary between the file system and the disk
- */
-
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include "devices/block.h"
-#include "threads/synch.h"
 #include "filesys/cache.h"
-#include "threads/malloc.h"
 #include "filesys/filesys.h"
+#include "threads/malloc.h"
+#include <list.h>
 
-#define BLOCK_SIZE 512
-#define CACHE_SIZE 64
-
-/* #############################################################
- * ############           DATA STRUCTURES       ################
- * #############################################################
- */
-
-struct CacheUnit_ {
-    block_sector_t disk_sector_id;
-    bool dirty;
-    bool accessed;
-    int servicing;
-    uint8_t block[BLOCK_SIZE];
+/* Read ahead sector */
+struct read_elem
+{
+  block_sector_t sec;
+  struct list_elem elem;
 };
 
-
-struct CacheBuffer_ {
-    int capacity;
-    CacheUnit *buffer[CACHE_SIZE];
-    Lock buffer_lock;
-};
-
-/* ##############################################################
- * #############        PUBLIC FUNCTIONS      ###################
- * ##############################################################
- */
-
-/* Reserve a buffer cache block to hold this sector, evict if needed :and return it */
-CacheUnit * cache_get_block (block_sector_t sector, bool exclusion);
-
-/* Release access of a cache block and write if necessary */
-void cache_put_block (CacheUnit * block);
-
-/* Return a pointer to the data held in the CacheUnit */
-void * cache_read_block (CacheUnit * block); 
-
-/* Fill a given cache block with zeros and return pointer to the data */
-void * cache_zero_block (CacheUnit * block);
-
-/* Mark a cache as dirty */ 
-void cache_mark_block_dirty (CacheUnit * block);
-
-/* A function called periodically to write all dirty caches to disk without eviction
-   to save data from being randomly lost */
-void cache_buffer_flush (void); 
-
-/* When the process terminates free all allocated resources of the cache buffer */
-void cache_shutdown (void);
-
-/* Make the cache buffer */
-CacheBuffer * cache_init (void);
-
-/* #############################################################
- * #############        Local Function      ####################
- * #############################################################
- */
-
-int run_eviction_algorithm(void);
-
-
-/* #############################################################
- * #############        Definitions         ####################
- * #############################################################
- */
-
-CacheBuffer * cache_init (){
-    filesys_cache =  malloc (sizeof (CacheBuffer));
-    filesys_cache->capacity = 0;
-    int i = 0;
-    while (i < CACHE_SIZE) {
-        filesys_cache->buffer[i] = NULL;
-        i++;
-    }
-    lock_init(&filesys_cache->buffer_lock);
-    // CAN START A THREAD HERE WHICH WILL DO THE CACHEFLUSHING
-    return filesys_cache;
+/* Initialize cache */
+void cache_init (void)
+{
+  cache_size = 0;
+  list_init (&cache_list);
+  list_init (&read_list);
+  lock_init (&cache_lock);
+  lock_init (&read_lock);
+  cond_init (&read_not_empty);
 }
 
-CacheUnit * cache_get_block (block_sector_t sector, bool exclusion) {
-    int i = 0; // See if it exists in the cache already
-    while (i < CACHE_SIZE){
-        if (filesys_cache->buffer[i]->disk_sector_id == sector) {
-            // TODO: Do we need to consider servicing number here?
-            return filesys_cache->buffer[i];
-        }
-        i++;
+/* Get sector from cache, write it in cache if not already present */
+struct cache_elem* cache_get_elem (block_sector_t sector, bool writing)
+{
+  struct cache_elem *c;
+  struct list_elem *i;
+  lock_acquire(&cache_lock);
+  for (i = list_begin (&cache_list); i != list_end (&cache_list); i = list_next (i)){
+    c = list_entry(i, struct cache_elem, c_elem);
+    if (c->sector == sector){
+      c->dirty |= writing;
+      c->accessed = true;
+      lock_release (&cache_lock);
+      return c;
     }
-    // Else we make a new one and add it to the buffer
-    CacheUnit * cu = malloc (sizeof (CacheUnit));
-    cu->disk_sector_id = sector;
-    cu->dirty = false;
-    cu->accessed = true;
-    cu->servicing = 1;
-
-    i = 0;
-    lock_acquire(&filesys_cache->buffer_lock);  // Hold the lock while we search. We don't want two threads finding the same free spot
-    while (i < CACHE_SIZE) {
-        if (filesys_cache->buffer[i] == NULL){
-            filesys_cache->buffer[i] = cu;
-            break;
-        }
-        i++;
-    }
-    if (i == CACHE_SIZE) {
-        i = run_eviction_algorithm();           // Run the eviction algorithm. We still have the lock. 
-        filesys_cache->buffer[i] = cu;                  // We get given the index of free spot, so we fill it.
-    }
-    lock_release(&filesys_cache->buffer_lock);  // We are done now
-    return cu;
+  }
+  c = cache_push (sector, writing);
+  lock_release (&cache_lock);
+  return c;
 }
 
-/* Second Chance Algorithm */
-int run_eviction_algorithm(){
-    bool loop = true;
-    CacheUnit * cu = NULL;
-    int i = 0;
-    while (loop) { // Keep looping until we find an entry to evict
-        i = 0;
-        while ( i < CACHE_SIZE){    
-            cu = filesys_cache->buffer[i];
-            if (cu->servicing > 0) {continue;}       // If the unit is servicing some threads, leave it
-            if (cu->accessed) {                      // Change access to false if true
-                cu->accessed = false;
-            } else {
-                if (cu->dirty) {                 // Otherwise if it is dirty then write. We can now use this space. 
-                    block_write (fs_device, cu->disk_sector_id, &cu->block);
-                }
-                loop = false;
-                break;
-            }
-            i++;
-        }
+/* Write element into cache */
+struct cache_elem* cache_push (block_sector_t sector, bool writing)
+{
+  struct cache_elem *c;
+  if (cache_size < MAX_SIZE){
+    cache_size++;
+    c = malloc (sizeof (struct cache_elem));
+    if (!c){
+      return NULL;
     }
-    free (filesys_cache->buffer[i]);
-    filesys_cache->buffer[i] = NULL;
-    return i;
+    list_push_back(&cache_list, &c->c_elem);
+  }
+  else{
+    c = cache_evict ();
+  }
+  c->sector = sector;
+  block_read (fs_device, c->sector, &c->block);
+  c->dirty = writing;
+  c->accessed = true;
+  return c;
 }
 
-void cache_shutdown (){
-    cache_buffer_flush();                         // We iterate through the array once writing everything that is dirty
-    int i = 0;
-    lock_acquire(&filesys_cache->buffer_lock);
-    while (i < CACHE_SIZE){                     // We go through and free everything now indiscriminately
-        free(filesys_cache->buffer[i]);
-        filesys_cache->buffer[i] = NULL;
-        i++;
+/* Eviction algorithm for cache */
+struct cache_elem* cache_evict (void)
+{
+  struct cache_elem *c;
+  struct list_elem *i;
+  bool evicted = false;
+  for (i = list_begin (&cache_list); i != list_end (&cache_list); i = list_next (i)){
+    c = list_entry(i, struct cache_elem, c_elem);
+    if (c->accessed){
+      c->accessed = false;
     }
-    lock_release(&filesys_cache->buffer_lock);
+    else {
+      if (c->dirty){
+        block_write(fs_device, c->sector, &c->block);
+      }
+      evicted = true; 
+      break;
+    }
+  }
+  if (!evicted) {
+    c = cache_evict ();
+  }
+  return c;
+}
+
+/* Copy content of the cache to disk */
+void cache_backup (bool shutdown)
+{
+  lock_acquire(&cache_lock);
+  struct list_elem *next;
+  struct list_elem *i = list_begin (&cache_list);
+  while (i != list_end (&cache_list)){
+    next = list_next (i);
+    struct cache_elem *c = list_entry (i, struct cache_elem, c_elem);
+    if (c->dirty){
+      block_write (fs_device, c->sector, &c->block);
+      c->dirty = false;
+    }
+    if (shutdown){
+      list_remove(&c->c_elem);
+      free(c);
+    }
+    i = next;
+  }
+  lock_release (&cache_lock);
+}
+
+/* Cache read-ahead process */
+void cache_read_ahead (void *sec UNUSED)
+{
+  while (true){
+    lock_acquire (&read_lock);
+    while (list_empty (&read_list)){
+      cond_wait (&read_not_empty, &read_lock);
+    }
+    struct read_elem *read = list_entry (list_pop_front (&read_list), struct read_elem, elem);
+    lock_release (&read_lock);
+    struct cache_elem *c = cache_get_elem (read->sec, false);
+    free (read);
+  }
+}
+
+/* Schedule sector for read ahead */
+void cache_ahead (block_sector_t sec)
+{
+  struct read_elem *read = (struct read_elem *) malloc (sizeof (struct read_elem));
+  if (read == NULL)
     return;
-}
-
-
-void cache_buffer_flush(){
-    lock_acquire(&filesys_cache->buffer_lock);
-    int i = 0;
-    CacheUnit * cu = filesys_cache->buffer[i];
-    while (i < CACHE_SIZE) {
-        if (cu != NULL){
-            if (cu->dirty == true){
-                block_write(fs_device, cu->disk_sector_id, &cu->block);
-                cu->dirty = false;
-            }
-        }
-        i++;
-    }
-    lock_release(&filesys_cache->buffer_lock);
-    return;
-}
-
-void *cache_zero_block (CacheUnit * cu){
-    int i = 0;
-    while (i < BLOCK_SIZE){
-        cu->block[i] = 0;
-        i++;
-    }
-    return &cu->block;
-}
-
-void cache_mark_block_dirty (CacheUnit * cu){
-    cu->dirty = true;
-    return;
-}
-
-void cache_put_block (CacheUnit * cu){
-    cu->servicing--;
-    return;
-}
-
-void * cache_read_block (CacheUnit * cu){
-    return &cu->block;
+  read->sec = sec;
+  lock_acquire (&read_lock);
+  list_push_back (&read_list, &read->elem);
+  cond_signal (&read_not_empty, &read_lock);
+  lock_release (&read_lock);
 }

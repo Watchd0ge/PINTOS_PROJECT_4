@@ -1,55 +1,63 @@
 #ifndef FILESYS_CACHE_H
 #define FILESYS_CACHE_H
 
-/* Jun-Yi Lau
- * 49002253
- * PINTOS PROJECT 4
- * CACHE.H
- * Interface functions that will allow the cache buffer to be the
- * only interface between files and disk. We will be using an opaque
- * struct cache_unit
- */
-
-#include <stdio.h>
-#include <stdlib.h>
 #include "devices/block.h"
-#include "filesys/filesys.h"
+#include "threads/synch.h"
+#include "devices/block.h"
+#include <list.h>
 
-/* Global cache buffer */
-typedef struct CacheBuffer_ CacheBuffer;
+#define MAX_SIZE 64
+#define BUFFER_SIZE 64
 
-typedef struct CacheUnit_ CacheUnit;
+/* List of the cache blocks */
+struct list cache_list;
 
-CacheBuffer * filesys_cache;
+typedef struct CacheUnit_ {
+    block_sector_t sector;
+    bool dirty;
+    bool accessed;
+    int servicing;
+    uint8_t block[BLOCK_SECTOR_SIZE];
+} CacheUnit;
 
-/* Initalise our global cache buffer */
-CacheBuffer * cache_buffer_init (void);
+typedef struct CacheBuffer_ {
+    CacheUnit * buffer[BUFFER_SIZE];
+    Lock cache_lock;
+} CacheBuffer;
 
-/* Reserve a buffer cache block to hold this sector, evict if needed :and return it */
-CacheUnit * cache_get_block (block_sector_t sector, bool exclusion);
+CacheBuffer filesys_cache;
 
-/* Release access of a cache block and write if necessary */
-void cache_put_block (CacheUnit * block);
+/* Cache size */
+int cache_size;
 
-/* Return a pointer to the data held in the CacheUnit */ 
-void * cache_read_block (CacheUnit * block);
+/* Cache lock */
+struct lock cache_lock;
 
-/* Fill a given cache block with zeros and return pointer to the data */
-void * cache_zero_block (CacheUnit * block);
+/* Read ahead list */
+struct list read_list;
 
-/* Mark a cache as dirty */
-void cache_mark_block_dirty (CacheUnit * block);
+/* Read ahead lock */
+struct lock read_lock;
 
-/* A function called periodically to write all dirty caches to disk without eviction
- * to save data from being randomly lost
- */
-void cache_buffer_flush (void);
+/* Read ahead condition */
+struct condition read_not_empty;
 
-/* When the process terminates free all allocated resources of the cache buffer */
-void cache_shutdown (void);
+/* Cache entry */
+typedef struct cache_elem {
+  uint8_t block[BLOCK_SECTOR_SIZE];
+  block_sector_t sector;
+  bool dirty;
+  bool accessed;
+  int servicing;
+  struct list_elem c_elem;
+};
 
-
-/* Setup global cache buffer */
-CacheBuffer * cache_init (void);
+void cache_init (void);
+struct cache_elem* cache_get_elem (block_sector_t sector, bool writing);
+struct cache_elem* cache_push (block_sector_t sector, bool writing);
+struct cache_elem* cache_evict (void);
+void cache_backup (bool shutdown);
+void cache_read_ahead (void *sec);
+void cache_ahead (block_sector_t sec);
 
 #endif /* filesys/cache.h */
