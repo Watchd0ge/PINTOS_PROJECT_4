@@ -3,13 +3,6 @@
 #include "threads/malloc.h"
 #include <list.h>
 
-/* Read ahead sector */
-struct read_elem
-{
-  block_sector_t sec;
-  struct list_elem elem;
-};
-
 /* Initialize cache */
 void cache_init (void)
 {
@@ -131,30 +124,41 @@ void cache_backup (bool shutdown)
     lock_release (&cache_lock);
 }
 
-/* Cache read-ahead process */
-void cache_read_ahead (void *sec UNUSED)
+/* Read ahead sector */
+typedef struct read_elem
 {
-  while (true){
+    block_sector_t sector;
+    struct list_elem elem;
+} ReadAheadUnit;
+
+/* Cache Read Ahead scheduler */
+void cache_ahead (block_sector_t sector)
+{
+    ReadAheadUnit *read = (ReadAheadUnit *) malloc (sizeof (ReadAheadUnit));
+    
+    if (read == NULL) { PANIC("NO MORE MEMORY FOR CACHE READ AHEAD"); }
+    
+    read->sector = sector;
+    
     lock_acquire (&read_lock);
-    while (list_empty (&read_list)){
-      cond_wait (&read_not_empty, &read_lock);
-    }
-    struct read_elem *read = list_entry (list_pop_front (&read_list), struct read_elem, elem);
+    
+    list_push_back (&read_list, &read->elem);
+    
+    cond_signal (&read_not_empty, &read_lock);
     lock_release (&read_lock);
-    struct cache_elem *c = cache_get_elem (read->sec, false);
-    free (read);
-  }
 }
 
-/* Schedule sector for read ahead */
-void cache_ahead (block_sector_t sec)
+/* Read Ahead Daemon : Constantly On */
+void cache_read_ahead (void *sec UNUSED)
 {
-  struct read_elem *read = (struct read_elem *) malloc (sizeof (struct read_elem));
-  if (read == NULL)
-    return;
-  read->sec = sec;
-  lock_acquire (&read_lock);
-  list_push_back (&read_list, &read->elem);
-  cond_signal (&read_not_empty, &read_lock);
-  lock_release (&read_lock);
+    while (true){
+        lock_acquire (&read_lock);
+        while (list_empty (&read_list)){
+            cond_wait (&read_not_empty, &read_lock);
+        }
+        ReadAheadUnit *read = list_entry (list_pop_front (&read_list), ReadAheadUnit, elem);
+        lock_release (&read_lock);
+        free (read); // Need to hook this up to get cache
+    }
 }
+
