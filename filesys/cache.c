@@ -50,6 +50,7 @@ CacheUnit *cache_get_block (block_sector_t sector, bool to_write)
         if (cu->sector == sector){
             cu->dirty = !to_write;
             cu->accessed = true;
+            cu->open_cnt++;
             lock_release (&cache_lock);
             return cu;
         }
@@ -83,6 +84,7 @@ CacheUnit* cache_push (block_sector_t sector, bool to_write)
     cu->sector = sector;
     cu->dirty = to_write;
     cu->accessed = true;
+    cu->open_cnt = 1;
     block_read (fs_device, sector, &cu->block);
     return cu;
 }

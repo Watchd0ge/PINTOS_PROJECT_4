@@ -26,6 +26,7 @@ typedef struct cache_elem {
    bool dirty;
    bool accessed;
    int servicing;
+   int open_cnt;
   struct list_elem c_elem;
 } CacheUnit;
 
