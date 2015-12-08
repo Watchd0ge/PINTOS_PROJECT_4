@@ -7,6 +7,14 @@
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
 
+#define INDIRECT_BLOCKS     128         /* Block of pointers */
+#define INODE_BLOCKS        13          /* Top level pointers*/
+#define DIRECT              4           /* Direct pointers */
+#define INDIRECT            8           /* Indirect pointers */
+#define DOUBLE_INDIRECT     1           /* Double indirect pointers */
+#define MAX_FILE            8388608     /* Max file size */
+
+
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
@@ -36,7 +44,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
+    struct inode_disk data;    
   };
 
 /* Returns the block device sector that contains byte offset POS
