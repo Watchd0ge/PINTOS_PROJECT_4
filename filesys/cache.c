@@ -199,9 +199,12 @@ void specialised_cache_get_block (block_sector_t sector)
         if (cu->sector == sector){
             cu->accessed = false;
             lock_release (&cache_lock);
+            return;
         }
     }
     /* Otherwise we are going to pull it from disk and add it to the buffer */
     cu = cache_push (sector, false);
+    list_push_back (&cache_list, &cu->c_elem);
     lock_release (&cache_lock);
+    return;
 }
