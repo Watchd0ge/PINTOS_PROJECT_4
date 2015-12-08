@@ -27,39 +27,67 @@
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
-  {
-    off_t length;                       /* File size in bytes. */
-    unsigned magic;                     /* Magic number. */
-    uint32_t direct_index;
-    uint32_t indirect_index;
-    uint32_t double_indirect_index;
-    bool isdir;
-    block_sector_t parent;
-    uint32_t unused[107];                     /* Not used. */
-    block_sector_t ptr[INODE_BLOCK_PTRS];     /* Pointers to blocks */
-  };
 
-struct indirect_block
+/* ###########################################################
+ * ##############     DATA STRUCTURES    #####################
+ * ###########################################################
+ */
+typedef struct inode_disk
+  {
+    off_t           length;                       /* File size in bytes. */
+    unsigned        magic;                     /* Magic number. */
+    uint32_t        direct_index;
+    uint32_t        indirect_index;
+    uint32_t        double_indirect_index;
+    bool            isdir;
+    block_sector_t  parent;
+    uint32_t        unused[107];                     /* Not used. */
+    block_sector_t  ptr[INODE_BLOCK_PTRS];     /* Pointers to blocks */
+  } iDisk;
+
+typedef struct indirect_block
   {
     block_sector_t ptr[INDIRECT_BLOCK_PTRS];
-  };
+  } IndirectBlock;
 
-bool inode_alloc (struct inode_disk *disk_inode);
-off_t inode_expand (struct inode *inode, off_t new_length);
-size_t inode_expand_indirect_block (struct inode *inode,
-				    size_t new_data_sectors);
-size_t inode_expand_double_indirect_block (struct inode *inode,
-					   size_t new_data_sectors);
-size_t inode_expand_double_indirect_block_lvl_two (struct inode *inode,
-				       size_t new_data_sectors,
-				       struct indirect_block *outer_block);
+/* In-memory inode. */
+typedef struct inode
+  {
+    struct          list_elem elem;              /* Element in inode list. */
+    block_sector_t  sector;              /* Sector number of disk location. */
+    int             open_cnt;                       /* Number of openers. */
+    bool            removed;                       /* True if deleted, false otherwise. */
+    int             deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
+    off_t           length;                       /* File size in bytes. */
+    off_t           read_length;
+    size_t          direct_index;
+    size_t          indirect_index;
+    size_t          double_indirect_index;
+    bool            isdir;
+    block_sector_t  parent;
+    struct lock     lock;
+    block_sector_t  ptr[INODE_BLOCK_PTRS];  /* Pointers to blocks */
+  } iNode;
 
-void inode_dealloc (struct inode *inode);
-void inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
-void inode_dealloc_double_indirect_block (block_sector_t *ptr,
-					  size_t indirect_ptrs,
-					  size_t data_ptrs);
+/* ###########################################################
+ * ##############       PROTOTYPES        ####################
+ * ###########################################################
+ */
+
+bool    inode_alloc (struct inode_disk *disk_inode);
+off_t   inode_expand (struct inode *inode, off_t new_length);
+size_t  inode_expand_indirect_block (struct inode *inode, size_t new_data_sectors);
+size_t  inode_expand_double_indirect_block (struct inode *inode, size_t new_data_sectors);
+size_t  inode_expand_double_indirect_block_lvl_two (struct inode *inode, size_t new_data_sectors, struct indirect_block *outer_block);
+
+void    inode_dealloc (struct inode *inode);
+void    inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
+void    inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs);
+
+/* ###########################################################
+ * ##############     MATH FUNCTIONS       ###################
+ * ###########################################################
+ */
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -89,25 +117,6 @@ static size_t bytes_to_double_indirect_sector (off_t size)
     }
   return DOUBLE_INDIRECT_BLOCKS;
 }
-
-/* In-memory inode. */
-struct inode
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    off_t length;                       /* File size in bytes. */
-    off_t read_length;
-    size_t direct_index;
-    size_t indirect_index;
-    size_t double_indirect_index;
-    bool isdir;
-    block_sector_t parent;
-    struct lock lock;
-    block_sector_t ptr[INODE_BLOCK_PTRS];  /* Pointers to blocks */
-  };
 
 /* Returns the block device sector that contains byte offset POS
    within INODE.
@@ -151,6 +160,11 @@ byte_to_sector (const struct inode *inode, off_t length, off_t pos)
       return -1;
     }
 }
+
+/* ###########################################################
+ * ##############        DEFINITIONS       ###################
+ * ###########################################################
+ */
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
