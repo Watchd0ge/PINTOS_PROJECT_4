@@ -9,21 +9,21 @@ struct bitmap;
 
 void            inode_init (void);
 bool            inode_create (block_sector_t, off_t, bool);
-iNode           inode_open (block_sector_t);
-iNode           inode_reopen (struct inode *);
-block_sector_t  inode_get_inumber (const struct inode *);
-bool            inode_is_dir (const struct inode *);
-void            inode_close (struct inode *);
-void            inode_remove (struct inode *);
-off_t           inode_read_at (struct inode *, void *, off_t size, off_t offset);
-off_t           inode_write_at (struct inode *, const void *, off_t size, off_t offset);
-void            inode_deny_write (struct inode *);
-void            inode_allow_write (struct inode *);
-off_t           inode_length (struct inode *);
-int             inode_get_open_cnt (const struct inode *inode);
-block_sector_t  inode_get_parent (const struct inode *inode);
+iNode *         inode_open (block_sector_t);
+iNode *         inode_reopen (iNode *);
+block_sector_t  inode_get_inumber (const iNode *);
+bool            inode_is_dir (const iNode *);
+void            inode_close (iNode *);
+void            inode_remove (iNode *);
+off_t           inode_read_at (iNode *, void *, off_t size, off_t offset);
+off_t           inode_write_at (iNode *, const void *, off_t size, off_t offset);
+void            inode_deny_write (iNode *);
+void            inode_allow_write (iNode *);
+off_t           inode_length (iNode *);
+int             inode_get_open_cnt (const iNode *inode);
+block_sector_t  inode_get_parent (const iNode *inode);
 bool            inode_add_parent (block_sector_t parent_sector, block_sector_t child_sector);
-void            inode_lock (const struct inode *inode);
-void            inode_unlock (const struct inode *inode);
+void            inode_lock (const iNode *inode);
+void            inode_unlock (const iNode *inode);
 
 #endif /* filesys/inode.h */
