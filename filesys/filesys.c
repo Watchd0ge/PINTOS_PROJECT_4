@@ -7,6 +7,9 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "filesys/cache.h"
+#include "threads/thread.h"
+#include "devices/timer.h"
+#include "threads/malloc.h"
 
 #define SHUTDOWN true
 #define FLUSH false
@@ -14,7 +17,15 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
+/* ##############################################
+ * #############    PROTOTYPES      #############
+ * ##############################################
+ */
+
+void cache_write_behind (void *aux);
+void cache_read_ahead_daemon (void *aux);
 static void do_format (void);
+
 
 /* Initializes the file system module.
    If FORMAT is true, reformats the file system. */
@@ -30,7 +41,7 @@ filesys_init (bool format)
   cache_init ();
 
   thread_create ("cache_write_behind", PRI_DEFAULT, cache_write_behind, NULL);
-  thread_create ("cache_read_ahead", PRI_DEFAULT, cache_read_ahead_daemon, NULL);
+  //thread_create ("cache_read_ahead_daemon", PRI_DEFAULT, cache_read_ahead_daemon, NULL);
 
   if (format)
     do_format ();
