@@ -35,14 +35,14 @@
 typedef struct inode_disk
   {
     off_t           length;                       /* File size in bytes. */
-    unsigned        magic;                     /* Magic number. */
+    unsigned        magic;                        /* Magic number. */
     uint32_t        direct_index;
     uint32_t        indirect_index;
     uint32_t        double_indirect_index;
     bool            isdir;
     block_sector_t  parent;
-    uint32_t        unused[107];                     /* Not used. */
-    block_sector_t  ptr[INODE_BLOCK_PTRS];     /* Pointers to blocks */
+    block_sector_t  ptr[INODE_BLOCK_PTRS];        /* Pointers to blocks */
+    uint32_t        unused[107];                  /* Not used. */
   } iDisk;
 
 typedef struct indirect_block
@@ -53,12 +53,12 @@ typedef struct indirect_block
 /* In-memory inode. */
 typedef struct inode
   {
-    struct          list_elem elem;              /* Element in inode list. */
-    block_sector_t  sector;              /* Sector number of disk location. */
-    int             open_cnt;                       /* Number of openers. */
-    bool            removed;                       /* True if deleted, false otherwise. */
-    int             deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    off_t           length;                       /* File size in bytes. */
+    struct          list_elem elem;             /* Element in inode list. */
+    block_sector_t  sector;                     /* Sector number of disk location. */
+    int             open_cnt;                   /* Number of openers. */
+    bool            removed;                    /* True if deleted, false otherwise. */
+    int             deny_write_cnt;             /* 0: writes ok, >0: deny writes. */
+    off_t           length;                     /* File size in bytes. */
     off_t           read_length;
     size_t          direct_index;
     size_t          indirect_index;
@@ -66,7 +66,7 @@ typedef struct inode
     bool            isdir;
     block_sector_t  parent;
     struct lock     lock;
-    block_sector_t  ptr[INODE_BLOCK_PTRS];  /* Pointers to blocks */
+    block_sector_t  ptr[INODE_BLOCK_PTRS];      /* Pointers to blocks */
   } iNode;
 
 /* ###########################################################
