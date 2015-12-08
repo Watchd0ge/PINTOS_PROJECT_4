@@ -160,10 +160,10 @@ void cache_read_ahead (block_sector_t sector)
 
     read->sector = sector;
 
-    lock_acquire (&read_lock);
+    // lock_acquire (&read_lock);
 
     list_push_back (&read_list, &read->elem);
-    lock_release (&read_lock);
+    // lock_release (&read_lock);
     cond_signal (&read_not_empty, &read_lock);
 }
 
@@ -171,11 +171,11 @@ void cache_read_ahead (block_sector_t sector)
 void cache_read_ahead_daemon (void *sec UNUSED)
 {
     while (true){
+        lock_acquire (&read_lock);
         while (list_empty (&read_list)){
             cond_wait (&read_not_empty, &read_lock);
         }
         // PANIC("WE GOT IN");
-        lock_acquire (&read_lock);
         ReadAheadUnit *read = list_entry (list_pop_front (&read_list), ReadAheadUnit, elem);
         lock_release (&read_lock); // Need to hook this up to get cache
         specialised_cache_get_block(read->sector);
