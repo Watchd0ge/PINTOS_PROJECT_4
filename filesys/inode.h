@@ -5,6 +5,10 @@
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
+typedef struct inode iNode;
+
+typedef inode_disk iDisk;
+
 struct bitmap;
 
 void            inode_init (void);

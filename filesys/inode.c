@@ -32,7 +32,7 @@
  * ##############     DATA STRUCTURES    #####################
  * ###########################################################
  */
-typedef struct inode_disk
+struct inode_disk
   {
     off_t           length;                       /* File size in bytes. */
     unsigned        magic;                        /* Magic number. */
@@ -43,7 +43,7 @@ typedef struct inode_disk
     block_sector_t  parent;
     block_sector_t  ptr[INODE_BLOCK_PTRS];        /* Pointers to blocks */
     uint32_t        unused[107];                  /* Not used. */
-  } iDisk;
+  };
 
 typedef struct indirect_block
   {
@@ -51,7 +51,7 @@ typedef struct indirect_block
   } IndirectBlock;
 
 /* In-memory inode. */
-typedef struct inode
+struct inode
   {
     struct          list_elem elem;             /* Element in inode list. */
     block_sector_t  sector;                     /* Sector number of disk location. */
@@ -67,7 +67,7 @@ typedef struct inode
     block_sector_t  parent;
     struct lock     lock;
     block_sector_t  ptr[INODE_BLOCK_PTRS];      /* Pointers to blocks */
-  } iNode;
+  };
 
 /* ###########################################################
  * ##############       PROTOTYPES        ####################
