@@ -171,17 +171,19 @@ void cache_read_ahead (block_sector_t sector)
 void cache_read_ahead_daemon (void *sec UNUSED)
 {
     while (true){
-        while (list_empty (&read_list)){
+        // while (list_empty (&read_list)){
             // lock_acquire (&read_lock);
             // cond_wait (&read_not_empty, &read_lock);
             // lock_release (&read_lock); // Need to hook this up to get cache
-        }
+        // }
         // PANIC("WE GOT IN");
         lock_acquire (&read_lock);
-        ReadAheadUnit *read = list_entry (list_pop_front (&read_list), ReadAheadUnit, elem);
+        if (!list_empty(&read_list)) {
+          ReadAheadUnit *read = list_entry (list_pop_front (&read_list), ReadAheadUnit, elem);
+          // specialised_cache_get_block(read->sector);
+          free(read);
+        }
         lock_release (&read_lock); // Need to hook this up to get cache
-        specialised_cache_get_block(read->sector);
-        free(read);
     }
 }
 
