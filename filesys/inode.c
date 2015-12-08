@@ -70,7 +70,7 @@ struct inode
   };
 
 /* ###########################################################
- * ##############       PROTOTYPES        ####################
+ * ##############     LOCAL PROTOTYPES    ####################
  * ###########################################################
  */
 
@@ -110,8 +110,7 @@ bytes_to_indirect_sectors (off_t size)
 
 static size_t bytes_to_double_indirect_sector (off_t size)
 {
-  if (size <= BLOCK_SECTOR_SIZE*(DIRECT_BLOCKS +
-				INDIRECT_BLOCKS*INDIRECT_BLOCK_PTRS))
+  if (size <= BLOCK_SECTOR_SIZE*(DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS))
     {
       return 0;
     }
@@ -123,42 +122,33 @@ static size_t bytes_to_double_indirect_sector (off_t size)
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 static block_sector_t
-byte_to_sector (const iNode *inode, off_t length, off_t pos)
+byte_to_sector (const iNode *inode, off_t inode_read_length, off_t offset)
 {
   ASSERT (inode != NULL);
-  if (pos < length)
-    {
-      uint32_t idx;
-      uint32_t indirect_block[INDIRECT_BLOCK_PTRS];
-      if (pos < BLOCK_SECTOR_SIZE*DIRECT_BLOCKS)
-	{
-	  return inode->ptr[pos / BLOCK_SECTOR_SIZE];
-	}
-      else if (pos < BLOCK_SECTOR_SIZE*(DIRECT_BLOCKS +
-					INDIRECT_BLOCKS*INDIRECT_BLOCK_PTRS))
-	{
-	  pos -= BLOCK_SECTOR_SIZE*DIRECT_BLOCKS;
-	  idx = pos / (BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS) + DIRECT_BLOCKS;
-	  block_read(fs_device, inode->ptr[idx], &indirect_block);
-	  pos %= BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS;
-	  return indirect_block[pos / BLOCK_SECTOR_SIZE];
-	}
-      else
-	{
-	  block_read(fs_device, inode->ptr[DOUBLE_INDIRECT_INDEX],
-		     &indirect_block);
-	  pos -= BLOCK_SECTOR_SIZE*(DIRECT_BLOCKS +
-				    INDIRECT_BLOCKS*INDIRECT_BLOCK_PTRS);
-	  idx = pos / (BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS);
-	  block_read(fs_device, indirect_block[idx], &indirect_block);
-	  pos %= BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS;
-	  return indirect_block[pos / BLOCK_SECTOR_SIZE];
-	}
+  if (offset < inode_read_length) { // If offset is valid
+    uint32_t idx;
+    uint32_t indirect_block[INDIRECT_BLOCK_PTRS];
+    if (offset < BLOCK_SECTOR_SIZE * DIRECT_BLOCKS) {  // Looking at the direct blocks
+      return inode->ptr[offset / BLOCK_SECTOR_SIZE];
+
+    } else if (offset < BLOCK_SECTOR_SIZE * (DIRECT_BLOCKS + (INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS))) { // Looking at indirect blocks
+      offset -= BLOCK_SECTOR_SIZE * DIRECT_BLOCKS;                                // Remove size of direct blocks
+      idx = (offset / (BLOCK_SECTOR_SIZE * INDIRECT_BLOCK_PTRS)) + DIRECT_BLOCKS; // calculate the inode->ptr[] index
+      block_read(fs_device, inode->ptr[idx], &indirect_block);                    // We put the sector full of pointers into the indirect_block space in the iNode
+      offset %= BLOCK_SECTOR_SIZE * INDIRECT_BLOCK_PTRS;                          // Within this indirect_block we find index with the block sector we are looking for
+      return indirect_block [offset / BLOCK_SECTOR_SIZE];
+
+    } else {
+      block_read(fs_device, inode->ptr[DOUBLE_INDIRECT_INDEX], &indirect_block);
+      offset -= BLOCK_SECTOR_SIZE * (DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS);
+      idx = offset / (BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS);
+      block_read(fs_device, indirect_block[idx], &indirect_block);
+      offset %= BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS;
+      return indirect_block[offset / BLOCK_SECTOR_SIZE];
     }
-  else
-    {
-      return -1;
-    }
+  } else {
+    return -1;
+  }
 }
 
 /* ###########################################################
@@ -195,23 +185,22 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
   disk_inode = calloc (1, sizeof *disk_inode);
-  if (disk_inode != NULL)
-    {
-      disk_inode->length = length;
-      if (disk_inode->length > MAX_FILE_SIZE)
-	{
-	  disk_inode->length = MAX_FILE_SIZE;
-	}
-      disk_inode->magic = INODE_MAGIC;
-      disk_inode->isdir = isdir;
-      disk_inode->parent = ROOT_DIR_SECTOR;
-      if (inode_alloc(disk_inode))
-        {
-          block_write (fs_device, sector, disk_inode);
-          success = true;
-        }
-      free (disk_inode);
+  if (disk_inode != NULL) {
+    disk_inode->length = length;
+    if (disk_inode->length > MAX_FILE_SIZE) {
+      disk_inode->length = MAX_FILE_SIZE;
     }
+    disk_inode->magic = INODE_MAGIC;
+    disk_inode->isdir = isdir;
+    disk_inode->parent = ROOT_DIR_SECTOR;
+    if (inode_alloc(disk_inode)) {
+      block_write (fs_device, sector, disk_inode);
+      success = true;
+    }
+    free (disk_inode);
+  } else {
+    PANIC("NO MORE SPACE FOR INODE_DISKS");
+  }
   return success;
 }
 

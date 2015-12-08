@@ -23,6 +23,8 @@ off_t           inode_read_at (iNode *, void *, off_t size, off_t offset);
 off_t           inode_write_at (iNode *, const void *, off_t size, off_t offset);
 void            inode_deny_write (iNode *);
 void            inode_allow_write (iNode *);
+
+/* INODE SETTERS & GETTERS */
 off_t           inode_length (iNode *);
 int             inode_get_open_cnt (const iNode *inode);
 block_sector_t  inode_get_parent (const iNode *inode);
