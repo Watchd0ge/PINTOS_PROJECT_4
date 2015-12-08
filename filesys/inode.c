@@ -345,7 +345,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       if (chunk_size <= 0)
         break;
 
-      CacheUnit *c = filesys_cache_block_get(sector_idx, false);
+      CacheUnit *c = cache_get_block(sector_idx, false);
       memcpy (buffer + bytes_read, (uint8_t *) &c->block + sector_ofs,
 	      chunk_size);
       c->accessed = true;
