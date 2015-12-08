@@ -57,7 +57,7 @@ void        cache_init (void);
  */
 CacheUnit * cache_get_block (block_sector_t sector, bool writing);
 
-void        cache_backup (bool shutdown);
+void        cache_flush (bool shutdown);
 void        cache_read_ahead (block_sector_t sec);
 
 #endif /* filesys/cache.h */

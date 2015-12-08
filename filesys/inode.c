@@ -339,12 +339,12 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
         break;
 
       /* Load to cache and read sector. */
-      struct cache_elem *c = cache_get_elem (sector_idx, false);
+      CacheUnit *c = cache_get_block (sector_idx, false);
       memcpy (buffer + bytes_read, (uint8_t *)&c->block + sector_ofs, chunk_size);
       c->accessed = true;
 
       /* Read Ahead. */
-      cache_ahead (sector_idx+1);
+      cache_read_ahead (sector_idx+1);
 
       /* Advance. */
       size -= chunk_size;
@@ -399,7 +399,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         break;
 
       /* Load to cache and write sector. */
-      struct cache_elem *c = cache_get_elem (sector_idx, true);
+      CacheUnit *c = cache_get_block (sector_idx, true);
       memcpy ((uint8_t *)&c->block + sector_ofs, buffer + bytes_written, chunk_size);
       c->accessed = true;
       c->dirty = true;
