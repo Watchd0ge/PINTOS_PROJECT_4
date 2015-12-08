@@ -7,7 +7,7 @@
 
 typedef struct inode iNode;
 
-typedef inode_disk iDisk;
+typedef struct inode_disk iDisk;
 
 struct bitmap;
 
