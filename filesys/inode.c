@@ -75,12 +75,12 @@ typedef struct inode
  */
 
 bool    inode_alloc (struct inode_disk *disk_inode);
-off_t   inode_expand (struct inode *inode, off_t new_length);
-size_t  inode_expand_indirect_block (struct inode *inode, size_t new_data_sectors);
-size_t  inode_expand_double_indirect_block (struct inode *inode, size_t new_data_sectors);
-size_t  inode_expand_double_indirect_block_lvl_two (struct inode *inode, size_t new_data_sectors, struct indirect_block *outer_block);
+off_t   inode_expand (iNode *inode, off_t new_length);
+size_t  inode_expand_indirect_block (iNode *inode, size_t new_data_sectors);
+size_t  inode_expand_double_indirect_block (iNode *inode, size_t new_data_sectors);
+size_t  inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t new_data_sectors, struct indirect_block *outer_block);
 
-void    inode_dealloc (struct inode *inode);
+void    inode_dealloc (iNode *inode);
 void    inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
 void    inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs);
 
@@ -123,7 +123,7 @@ static size_t bytes_to_double_indirect_sector (off_t size)
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 static block_sector_t
-byte_to_sector (const struct inode *inode, off_t length, off_t pos)
+byte_to_sector (const iNode *inode, off_t length, off_t pos)
 {
   ASSERT (inode != NULL);
   if (pos < length)
@@ -218,11 +218,11 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
 /* Reads an inode from SECTOR
    and returns a `struct inode' that contains it.
    Returns a null pointer if memory allocation fails. */
-struct inode *
+iNode *
 inode_open (block_sector_t sector)
 {
   struct list_elem *e;
-  struct inode *inode;
+  iNode *inode;
 
   /* Check whether this inode is already open. */
   for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
@@ -262,8 +262,8 @@ inode_open (block_sector_t sector)
 }
 
 /* Reopens and returns INODE. */
-struct inode *
-inode_reopen (struct inode *inode)
+iNode *
+inode_reopen (iNode *inode)
 {
   if (inode != NULL)
     inode->open_cnt++;
@@ -272,7 +272,7 @@ inode_reopen (struct inode *inode)
 
 /* Returns INODE's inode number. */
 block_sector_t
-inode_get_inumber (const struct inode *inode)
+inode_get_inumber (const iNode *inode)
 {
   return inode->sector;
 }
@@ -281,7 +281,7 @@ inode_get_inumber (const struct inode *inode)
    If this was the last reference to INODE, frees its memory.
    If INODE was also a removed inode, frees its blocks. */
 void
-inode_close (struct inode *inode)
+inode_close (iNode *inode)
 {
   /* Ignore null pointer. */
   if (inode == NULL)
@@ -321,7 +321,7 @@ inode_close (struct inode *inode)
 /* Marks INODE to be deleted when it is closed by the last caller who
    has it open. */
 void
-inode_remove (struct inode *inode)
+inode_remove (iNode *inode)
 {
   ASSERT (inode != NULL);
   inode->removed = true;
@@ -331,7 +331,7 @@ inode_remove (struct inode *inode)
    Returns the number of bytes actually read, which may be less
    than SIZE if an error occurs or end of file is reached. */
 off_t
-inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
+inode_read_at (iNode *inode, void *buffer_, off_t size, off_t offset)
 {
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
@@ -380,7 +380,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
    (Normally a write at end of file would extend the inode, but
    growth is not yet implemented.) */
 off_t
-inode_write_at (struct inode *inode, const void *buffer_, off_t size,
+inode_write_at (iNode *inode, const void *buffer_, off_t size,
                 off_t offset)
 {
   const uint8_t *buffer = buffer_;
@@ -440,7 +440,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 /* Disables writes to INODE.
    May be called at most once per inode opener. */
 void
-inode_deny_write (struct inode *inode)
+inode_deny_write (iNode *inode)
 {
   inode->deny_write_cnt++;
   ASSERT (inode->deny_write_cnt <= inode->open_cnt);
@@ -450,7 +450,7 @@ inode_deny_write (struct inode *inode)
    Must be called once by each inode opener who has called
    inode_deny_write() on the inode, before closing the inode. */
 void
-inode_allow_write (struct inode *inode)
+inode_allow_write (iNode *inode)
 {
   ASSERT (inode->deny_write_cnt > 0);
   ASSERT (inode->deny_write_cnt <= inode->open_cnt);
@@ -459,12 +459,12 @@ inode_allow_write (struct inode *inode)
 
 /* Returns the length, in bytes, of INODE's data. */
 off_t
-inode_length (struct inode *inode)
+inode_length (iNode *inode)
 {
   return inode->length;
 }
 
-void inode_dealloc (struct inode *inode)
+void inode_dealloc (iNode *inode)
 {
   size_t data_sectors = bytes_to_data_sectors(inode->length);
   size_t indirect_sectors = bytes_to_indirect_sectors(inode->length);
@@ -524,7 +524,7 @@ void inode_dealloc_indirect_block (block_sector_t *ptr,
   free_map_release(*ptr, 1);
 }
 
-off_t inode_expand (struct inode *inode, off_t new_length)
+off_t inode_expand (iNode *inode, off_t new_length)
 {
   static char zeros[BLOCK_SECTOR_SIZE];
   size_t new_data_sectors = bytes_to_data_sectors(new_length) - \
@@ -562,7 +562,7 @@ off_t inode_expand (struct inode *inode, off_t new_length)
   return new_length - new_data_sectors*BLOCK_SECTOR_SIZE;
 }
 
-size_t inode_expand_double_indirect_block (struct inode *inode,
+size_t inode_expand_double_indirect_block (iNode *inode,
 					   size_t new_data_sectors)
 {
   struct indirect_block block;
@@ -587,7 +587,7 @@ size_t inode_expand_double_indirect_block (struct inode *inode,
   return new_data_sectors;
 }
 
-size_t inode_expand_double_indirect_block_lvl_two (struct inode *inode,
+size_t inode_expand_double_indirect_block_lvl_two (iNode *inode,
 					   size_t new_data_sectors,
 					   struct indirect_block* outer_block)
 {
@@ -623,7 +623,7 @@ size_t inode_expand_double_indirect_block_lvl_two (struct inode *inode,
   return new_data_sectors;
 }
 
-size_t inode_expand_indirect_block (struct inode *inode,
+size_t inode_expand_indirect_block (iNode *inode,
 				  size_t new_data_sectors)
 {
   static char zeros[BLOCK_SECTOR_SIZE];
@@ -658,7 +658,7 @@ size_t inode_expand_indirect_block (struct inode *inode,
 
 bool inode_alloc (struct inode_disk *disk_inode)
 {
-  struct inode inode = {
+  iNode inode = {
     .length = 0,
     .direct_index = 0,
     .indirect_index = 0,
@@ -673,17 +673,17 @@ bool inode_alloc (struct inode_disk *disk_inode)
   return true;
 }
 
-bool inode_is_dir (const struct inode *inode)
+bool inode_is_dir (const iNode *inode)
 {
   return inode->isdir;
 }
 
-int inode_get_open_cnt (const struct inode *inode)
+int inode_get_open_cnt (const iNode *inode)
 {
   return inode->open_cnt;
 }
 
-block_sector_t inode_get_parent (const struct inode *inode)
+block_sector_t inode_get_parent (const iNode *inode)
 {
   return inode->parent;
 }
@@ -701,12 +701,12 @@ bool inode_add_parent (block_sector_t parent_sector,
   return true;
 }
 
-void inode_lock (const struct inode *inode)
+void inode_lock (const iNode *inode)
 {
-  lock_acquire(&((struct inode *)inode)->lock);
+  lock_acquire(&((iNode *)inode)->lock);
 }
 
-void inode_unlock (const struct inode *inode)
+void inode_unlock (const iNode *inode)
 {
-  lock_release(&((struct inode *) inode)->lock);
+  lock_release(&((iNode *) inode)->lock);
 }
