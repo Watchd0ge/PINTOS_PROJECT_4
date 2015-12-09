@@ -40,8 +40,8 @@ struct inode_disk
     uint32_t        indirect_index;
     uint32_t        double_indirect_index;
     bool            isdir;
-    block_sector_t  parent;
-    block_sector_t  ptr[INODE_BLOCK_PTRS];        /* Pointers to blocks */
+    block_sector_t  parent_inode;
+    block_sector_t  ptr[INODE_BLOCK_PTRS];        /* Will be used as a holding cell for pointers to other sectors */
     uint32_t        unused[107];                  /* Not used. */
   };
 
@@ -58,15 +58,15 @@ struct inode
     int             open_cnt;                   /* Number of openers. */
     bool            removed;                    /* True if deleted, false otherwise. */
     int             deny_write_cnt;             /* 0: writes ok, >0: deny writes. */
-    off_t           length;                     /* File size in bytes. */
-    off_t           read_length;
+    off_t           length;                     /* File size in bytes for extension purposes. */
+    off_t           read_length;                /* Readable file length */
     size_t          direct_index;
     size_t          indirect_index;
     size_t          double_indirect_index;
     bool            isdir;
     block_sector_t  parent_inode;
     struct lock     lock;
-    block_sector_t  ptr[INODE_BLOCK_PTRS];      /* Pointers to blocks */
+    block_sector_t  ptr[INODE_BLOCK_PTRS];      /* Will be used as a holding cell for pointers to other sectors */
   };
 
 /* List of open inodes, so that opening a single inode twice
@@ -522,7 +522,7 @@ off_t inode_expand (iNode *inode, off_t new_length)
       return new_length;
     }
 
-  while (inode->direct_index < INDIRECT_INDEX_START_START)
+  while (inode->direct_index < INDIRECT_INDEX_START)
     {
       free_map_allocate (1, &inode->ptr[inode->direct_index]);
       block_write(fs_device, inode->ptr[inode->direct_index], zeros);
@@ -683,7 +683,7 @@ bool inode_add_parent_inode (block_sector_t parent_sector,
     {
       return false;
     }
-  inode->parent = parent_sector;
+  inode->parent_inode = parent_sector;
   inode_close(inode);
   return true;
 }
