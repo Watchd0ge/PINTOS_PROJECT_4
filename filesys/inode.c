@@ -15,9 +15,9 @@
 #define INDIRECT_BLOCKS 9
 #define DOUBLE_INDIRECT_BLOCKS 1
 
-#define DIRECT_INDEX 0
-#define INDIRECT_INDEX 4
-#define DOUBLE_INDIRECT_INDEX 13
+#define DIRECT_INDEX_START 0
+#define INDIRECT_INDEX_START 4
+#define DOUBLE_INDIRECT_INDEX_START 13
 
 #define INDIRECT_BLOCK_PTRS 128
 #define INODE_BLOCK_PTRS 14
@@ -64,11 +64,14 @@ struct inode
     size_t          indirect_index;
     size_t          double_indirect_index;
     bool            isdir;
-    block_sector_t  parent;
+    block_sector_t  parent_inode;
     struct lock     lock;
     block_sector_t  ptr[INODE_BLOCK_PTRS];      /* Pointers to blocks */
   };
 
+/* List of open inodes, so that opening a single inode twice
+   returns the same `struct inode'. */
+static struct list active_inodes;
 /* ###########################################################
  * ##############     LOCAL PROTOTYPES    ####################
  * ###########################################################
@@ -100,20 +103,18 @@ bytes_to_data_sectors (off_t size)
 static size_t
 bytes_to_indirect_sectors (off_t size)
 {
-  if (size <= BLOCK_SECTOR_SIZE*DIRECT_BLOCKS)
-    {
-      return 0;
-    }
-  size -= BLOCK_SECTOR_SIZE*DIRECT_BLOCKS;
+  if (size <= BLOCK_SECTOR_SIZE*DIRECT_BLOCKS) {
+    return 0;
+  }
+  size -= BLOCK_SECTOR_SIZE * DIRECT_BLOCKS;
   return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS);
 }
 
 static size_t bytes_to_double_indirect_sector (off_t size)
 {
-  if (size <= BLOCK_SECTOR_SIZE*(DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS))
-    {
-      return 0;
-    }
+  if (size <= BLOCK_SECTOR_SIZE *(DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS)) {
+    return 0;
+  }
   return DOUBLE_INDIRECT_BLOCKS;
 }
 
@@ -139,7 +140,7 @@ byte_to_sector (const iNode *inode, off_t inode_read_length, off_t offset)
       return indirect_block [offset / BLOCK_SECTOR_SIZE];
 
     } else {
-      block_read(fs_device, inode->ptr[DOUBLE_INDIRECT_INDEX], &indirect_block);
+      block_read(fs_device, inode->ptr[DOUBLE_INDIRECT_INDEX_START], &indirect_block);
       offset -= BLOCK_SECTOR_SIZE * (DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS);
       idx = offset / (BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS);
       block_read(fs_device, indirect_block[idx], &indirect_block);
@@ -156,15 +157,12 @@ byte_to_sector (const iNode *inode, off_t inode_read_length, off_t offset)
  * ###########################################################
  */
 
-/* List of open inodes, so that opening a single inode twice
-   returns the same `struct inode'. */
-static struct list open_inodes;
 
 /* Initializes the inode module. */
 void
 inode_init (void)
 {
-  list_init (&open_inodes);
+  list_init (&active_inodes);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -192,7 +190,7 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
     }
     disk_inode->magic = INODE_MAGIC;
     disk_inode->isdir = isdir;
-    disk_inode->parent = ROOT_DIR_SECTOR;
+    disk_inode->parent_inode = ROOT_DIR_SECTOR;
     if (inode_alloc(disk_inode)) {
       block_write (fs_device, sector, disk_inode);
       success = true;
@@ -214,7 +212,7 @@ inode_open (block_sector_t sector)
   iNode *inode;
 
   /* Check whether this inode is already open. */
-  for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
+  for (e = list_begin (&active_inodes); e != list_end (&active_inodes);
        e = list_next (e))
     {
       inode = list_entry (e, struct inode, elem);
@@ -231,7 +229,7 @@ inode_open (block_sector_t sector)
     return NULL;
 
   /* Initialize. */
-  list_push_front (&open_inodes, &inode->elem);
+  list_push_front (&active_inodes, &inode->elem);
   inode->sector = sector;
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
@@ -245,7 +243,7 @@ inode_open (block_sector_t sector)
   inode->indirect_index = data.indirect_index;
   inode->double_indirect_index = data.double_indirect_index;
   inode->isdir = data.isdir;
-  inode->parent = data.parent;
+  inode->parent_inode = data.parent_inode;
   memcpy(&inode->ptr, &data.ptr, INODE_BLOCK_PTRS*sizeof(block_sector_t));
   return inode;
 }
@@ -297,7 +295,7 @@ inode_close (iNode *inode)
 	    .indirect_index = inode->indirect_index,
 	    .double_indirect_index = inode->double_indirect_index,
 	    .isdir = inode->isdir,
-	    .parent = inode->parent,
+	    .parent_inode = inode->parent_inode,
 	  };
 	  memcpy(&disk_inode.ptr, &inode->ptr,
 		 INODE_BLOCK_PTRS*sizeof(block_sector_t));
@@ -460,13 +458,13 @@ void inode_dealloc (iNode *inode)
   size_t double_indirect_sector = bytes_to_double_indirect_sector(
 						      inode->length);
   unsigned int idx = 0;
-  while (data_sectors && idx < INDIRECT_INDEX)
+  while (data_sectors && idx < INDIRECT_INDEX_START)
     {
       free_map_release (inode->ptr[idx], 1);
       data_sectors--;
       idx++;
     }
-  while (indirect_sectors && idx < DOUBLE_INDIRECT_INDEX)
+  while (indirect_sectors && idx < DOUBLE_INDIRECT_INDEX_START)
     {
       size_t data_ptrs = data_sectors < INDIRECT_BLOCK_PTRS ? \
 	data_sectors : INDIRECT_BLOCK_PTRS;
@@ -524,7 +522,7 @@ off_t inode_expand (iNode *inode, off_t new_length)
       return new_length;
     }
 
-  while (inode->direct_index < INDIRECT_INDEX)
+  while (inode->direct_index < INDIRECT_INDEX_START_START)
     {
       free_map_allocate (1, &inode->ptr[inode->direct_index]);
       block_write(fs_device, inode->ptr[inode->direct_index], zeros);
@@ -535,7 +533,7 @@ off_t inode_expand (iNode *inode, off_t new_length)
 	  return new_length;
 	}
     }
-  while (inode->direct_index < DOUBLE_INDIRECT_INDEX)
+  while (inode->direct_index < DOUBLE_INDIRECT_INDEX_START)
     {
       new_data_sectors = inode_expand_indirect_block(inode, new_data_sectors);
       if (new_data_sectors == 0)
@@ -543,7 +541,7 @@ off_t inode_expand (iNode *inode, off_t new_length)
 	  return new_length;
 	}
     }
-  if (inode->direct_index == DOUBLE_INDIRECT_INDEX)
+  if (inode->direct_index == DOUBLE_INDIRECT_INDEX_START)
     {
       new_data_sectors = inode_expand_double_indirect_block(inode,
 							    new_data_sectors);
@@ -672,12 +670,12 @@ int inode_get_open_cnt (const iNode *inode)
   return inode->open_cnt;
 }
 
-block_sector_t inode_get_parent (const iNode *inode)
+block_sector_t inode_get_parent_inode (const iNode *inode)
 {
-  return inode->parent;
+  return inode->parent_inode;
 }
 
-bool inode_add_parent (block_sector_t parent_sector,
+bool inode_add_parent_inode (block_sector_t parent_sector,
 		       block_sector_t child_sector)
 {
   struct inode* inode = inode_open(child_sector);
