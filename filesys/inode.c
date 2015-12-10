@@ -532,8 +532,8 @@ inode_expand_direct_block  (iNode *inode, size_t remaining_data_sectors){
 
   static char buffer[BLOCK_SECTOR_SIZE];
   while (inode->level_zero_index < INDIRECT_INDEX_START) {
-      free_map_allocate (1, &inode->block_ptr[inode->level_zero_index]);
-      block_write (fs_device, inode->block_ptr[inode->level_zero_index], buffer);
+      free_map_allocate (1, &inode->block_ptrs[inode->level_zero_index]);
+      block_write (fs_device, inode->block_ptrs[inode->level_zero_index], buffer);
       inode->level_zero_index++;
       remaining_data_sectors--;
       if (remaining_data_sectors == 0) {
@@ -572,7 +572,7 @@ inode_expand_indirect_block (iNode *inode, size_t remaining_data_sectors) {
     }
 
     // Once we are done we attache the block to the proper inode
-    block_write(fs_device, inode->ptr[inode->level_zero_index], &block);
+    block_write(fs_device, inode->block_ptrs[inode->level_zero_index], &block);
     if (inode->level_one_index == INDIRECT_BLOCK_PTRS) {
       inode->level_one_index = 0;
       inode->level_zero_index++;
