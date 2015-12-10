@@ -466,7 +466,7 @@ inode_allow_write (iNode *inode)
 
 void inode_dealloc (iNode *inode)
 {
-  size_t total_num_sectors      = bytes_to_sectors (inode->length);
+  size_t total_num_sectors      = bytes_to_data_sectors (inode->length);
   size_t indirect_sectors       = bytes_to_indirect_sectors (inode->length);
   size_t double_indirect_sector = bytes_to_double_indirect_sector (inode->length);
   unsigned int i = 0;
