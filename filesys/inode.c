@@ -576,28 +576,36 @@ inode_expand_indirect_block (iNode *inode, size_t remaining_data_sectors) {
 
   static char buffer[BLOCK_SECTOR_SIZE];
   struct indirect_block block;
-  // If we haven't put anything into indirect before, we will now allocate a
-  // a sector to it
-  if (inode->level_one_index == 0) {
-    free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
-  } else {
-    block_read(fs_device, inode->ptr[inode->level_zero_index], &block);
-  }
+  while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
+    // If we haven't put anything into indirect before, we will now allocate a
+    // a sector to it
+    if (inode->level_one_index == 0) {
+      free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
+    } else {
+      block_read(fs_device, inode->ptr[inode->level_zero_index], &block);
+    }
 
-  // Fill in the indirect pointer block as required
-  while (inode->level_one_index < INDIRECT_BLOCK_PTRS) {
-    free_map_allocate(1, &block.ptr[inode->level_one_index]);
-    block_write(fs_device, block.ptr[inode->level_one_index], buffer);
-    inode->level_one_index++;
-    remaining_data_sectors--;
-    if (remaining_data_sectors == 0) {
+    // We start filling in a fake block with the sectors we need
+    while (inode->level_one_index < INDIRECT_BLOCK_PTRS) {
+      free_map_allocate(1, &block.ptr[inode->level_one_index]);
+      block_write(fs_device, block.ptr[inode->level_one_index], buffer);
+      inode->level_one_index++;
+      remaining_data_sectors--;
+      if (remaining_data_sectors == 0) {
+        break;
+      }
+    }
+
+    // Once we are done we attache the block to the proper inode
+    block_write(fs_device, inode->ptr[inode->level_zero_index], &block);
+    if (inode->level_one_index == INDIRECT_BLOCK_PTRS) {
+      inode->level_one_index = 0;
+      inode->level_zero_index++;
+    }
+
+    if (remaining_data_sectors == 0){
       break;
     }
-  }
-  block_write(fs_device, inode->ptr[inode->level_zero_index], &block);
-  if (inode->level_one_index == INDIRECT_BLOCK_PTRS) {
-    inode->level_one_index = 0;
-    inode->level_zero_index++;
   }
   return remaining_data_sectors;
 }
