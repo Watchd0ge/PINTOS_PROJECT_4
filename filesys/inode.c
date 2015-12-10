@@ -237,7 +237,7 @@ inode_open (block_sector_t sector) {
   inode->removed = false;
 
   /* Copy the disk version into a regular inode so we can use it */
-  iDisk *data;
+  iDisk data;
   lock_init(&inode->lock);
   block_read(fs_device, inode->sector, &data);
   inode->is_dir           = data.is_dir;
@@ -285,7 +285,7 @@ inode_close (iNode *inode) {
       free_map_release (inode->sector, 1);
       inode_dealloc(inode);
     } else {
-      iDisk *d_node = {
+      iDisk d_node = {
         .is_dir           = inode->is_dir,
         .parent_inode     = inode->parent_inode,
         .length           = inode->length,
