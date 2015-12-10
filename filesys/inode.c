@@ -87,7 +87,7 @@ void    inode_dealloc (iNode *inode);
 void    inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
 void    inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs);
 
-size_t  inode_expand_indirect_block  (iNode *inode, size_t remaining_sectors_to_fill);
+size_t  inode_expand_direct_block  (iNode *inode, size_t remaining_sectors_to_fill);
 
 /* ###########################################################
  * ##############     MATH FUNCTIONS       ###################
@@ -524,7 +524,7 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
     return expanded_length;
   } else {
     /* We will slowly fill up the sectors of the inode from direct to double indirect */
-    remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
+    remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
     if (remaining_data_sectors == 0) {
         return expanded_length;
     }
@@ -550,7 +550,7 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
 }
 
 size_t
-inode_expand_indirect_block  (iNode *inode, size_t remaining_data_sectors){
+inode_expand_direct_block  (iNode *inode, size_t remaining_data_sectors){
   if (remaining_data_sectors == 0){
     return 0;
   }
