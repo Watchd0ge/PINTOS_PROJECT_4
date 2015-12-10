@@ -522,16 +522,16 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
 
   if (remaining_data_sectors == 0) {
     return expanded_length;
-  } else {
+  } //else {
     /* We will slowly fill up the sectors of the inode from direct to double indirect */
-    remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
-    if (remaining_data_sectors == 0) {
-        return expanded_length;
-    }
-  }
+  //   remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
+  //   if (remaining_data_sectors == 0) {
+  //       return expanded_length;
+  //   }
+  // }
 
-  // remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
-  // remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
+  remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
+  remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
   // remaining_data_sectors = inode_expand_double_indirect_block_lvl_two (inode, remaining_data_sectors);
 
   // Allocate for a new indirect block
