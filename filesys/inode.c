@@ -295,7 +295,7 @@ inode_close (iNode *inode) {
         .level_two_index  = inode->level_two_index,
       };
       memcpy(&d_node.ptr, &inode->ptr, INODE_BLOCK_PTRS*sizeof(block_sector_t));
-      block_write(fs_device, inode->sector, &disk_inode);
+      block_write(fs_device, inode->sector, &d_node);
     }
     free (inode);
   }
