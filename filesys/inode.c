@@ -204,6 +204,23 @@ inode_create (block_sector_t sector, off_t file_length, bool is_dir)
   return success;
 }
 
+bool
+inode_alloc (struct inode_disk *disk_inode)
+{
+  iNode inode = {
+    .length = 0,
+    .level_zero_index = 0,
+    .level_one_index = 0,
+    .level_two_index = 0,
+  };
+  inode_expand(&inode, disk_inode->length);
+  disk_inode->level_zero_index = inode.level_zero_index;
+  disk_inode->level_one_index = inode.level_one_index;
+  disk_inode->level_two_index = inode.level_two_index;
+  memcpy(&disk_inode->ptr, &inode.ptr, INODE_BLOCK_PTRS * sizeof(block_sector_t));
+  return true;
+}
+
 /* Reads an inode from SECTOR
    and returns a `struct inode' that contains it.
    Returns a null pointer if memory allocation fails. */
@@ -369,8 +386,7 @@ inode_read_at (iNode *inode, void *buffer_, off_t size, off_t offset)
    (Normally a write at end of file would extend the inode, but
    growth is not yet implemented.) */
 off_t
-inode_write_at (iNode *inode, const void *buffer_, off_t size,
-                off_t offset)
+inode_write_at (iNode *inode, const void *buffer_, off_t size, off_t offset)
 {
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
@@ -513,38 +529,24 @@ void inode_dealloc_indirect_block (block_sector_t *ptr,
   free_map_release(*ptr, 1);
 }
 
-off_t inode_expand (iNode *inode, off_t expanded_length)
-{
+/* #########################################################
+ * #############        INODE EXTENSION      ###############
+ * #########################################################
+ */
+
+off_t inode_expand (iNode *inode, off_t expanded_length) {
   // Find out how many more sectors we are expanding by
   // length after expansion vs current length
   size_t remaining_data_sectors = bytes_to_data_sectors(expanded_length) - bytes_to_data_sectors(inode->length);
-  static char buffer[BLOCK_SECTOR_SIZE];
-
-  if (remaining_data_sectors == 0) {
-    return expanded_length;
-  } else {
+  // static char buffer[BLOCK_SECTOR_SIZE];
+  //
+  // if (remaining_data_sectors == 0) {
+  //   return expanded_length;
+  // } else {
     /* We will slowly fill up the sectors of the inode from direct to double indirect */
-    remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
-    if (remaining_data_sectors == 0) {
-        return expanded_length;
-    }
-  }
-
+  remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
   remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
-
-  // Allocate for a new indirect block
-  // while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
-  //   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
-  //   if (remaining_data_sectors == 0) {
-  // 	  return expanded_length;
-  //   }
-  // }
-
-  // Otherwise we will expand into the double indirect block
-  // if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
-  //   remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
-  // }
   return expanded_length - (remaining_data_sectors * BLOCK_SECTOR_SIZE);
 }
 
@@ -668,61 +670,46 @@ inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t remaining_data_
   return remaining_data_sectors;
 }
 
+/* ##################################################################
+ * #################      GETTERS & SETTERS     #####################
+ * ##################################################################
+ */
 
 bool
-inode_alloc (struct inode_disk *disk_inode)
-{
-  iNode inode = {
-    .length = 0,
-    .level_zero_index = 0,
-    .level_one_index = 0,
-    .level_two_index = 0,
-  };
-  inode_expand(&inode, disk_inode->length);
-  disk_inode->level_zero_index = inode.level_zero_index;
-  disk_inode->level_one_index = inode.level_one_index;
-  disk_inode->level_two_index = inode.level_two_index;
-  memcpy(&disk_inode->ptr, &inode.ptr, INODE_BLOCK_PTRS * sizeof(block_sector_t));
-  return true;
-}
-
-bool
-inode_is_dir (const iNode *inode)
-{
+inode_is_dir (const iNode *inode) {
   return inode->is_dir;
 }
 
 int
-inode_get_open_cnt (const iNode *inode)
-{
+inode_get_open_cnt (const iNode *inode) {
   return inode->open_cnt;
 }
 
 block_sector_t
-inode_get_parent_inode (const iNode *inode)
-{
+inode_get_parent_inode (const iNode *inode) {
   return inode->parent_inode;
 }
 
 bool
-inode_add_parent_inode (block_sector_t parent_sector, block_sector_t child_sector)
-{
-  struct inode* inode = inode_open(child_sector);
-  if (!inode)
-    {
+inode_add_parent_inode (block_sector_t parent_sector, block_sector_t child_sector) {
+  iNode *inode = inode_open(child_sector);
+  if (!inode) {
       return false;
-    }
+  }
   inode->parent_inode = parent_sector;
   inode_close(inode);
   return true;
 }
 
-void inode_lock (const iNode *inode)
-{
+/* ######################################################
+ * #################      LOCKS     #####################
+ * ######################################################
+ */
+
+void inode_lock (const iNode *inode) {
   lock_acquire(&((iNode *)inode)->lock);
 }
 
-void inode_unlock (const iNode *inode)
-{
+void inode_unlock (const iNode *inode) {
   lock_release(&((iNode *) inode)->lock);
 }
