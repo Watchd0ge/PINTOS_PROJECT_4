@@ -464,20 +464,21 @@ inode_allow_write (iNode *inode)
  * #########################################################
  */
 
-void inode_dealloc (iNode *inode)
-{
-  size_t total_num_sectors      = bytes_to_data_sectors (inode->length);
-  size_t indirect_sectors       = bytes_to_indirect_sectors (inode->length);
-  size_t double_indirect_sector = bytes_to_double_indirect_sector (inode->length);
+void inode_dealloc (iNode *inode) {
+  size_t total_num_sectors                = bytes_to_data_sectors (inode->length);
+  size_t total_num_indirect_sectors       = bytes_to_indirect_sectors (inode->length);
+  size_t total_num_double_indirect_sector = bytes_to_double_indirect_sector (inode->length);
   unsigned int i = 0;
 
+  /* Release the direct blocks */
   while (total_num_sectors > 0 && i < INDIRECT_INDEX_START) {
       free_map_release (inode->ptr[i], 1);
       total_num_sectors--;
       i++;
   }
 
-  while (indirect_sectors > 0 && i < DOUBLE_INDIRECT_INDEX_START){
+  /* Relase the indirect blocks */
+  while (total_num_indirect_sectors > 0 && i < DOUBLE_INDIRECT_INDEX_START){
     size_t num_indirect_sectors;
     if (total_num_sectors < INDIRECT_BLOCK_PTRS) {
       num_indirect_sectors = total_num_sectors;
@@ -485,14 +486,26 @@ void inode_dealloc (iNode *inode)
       num_indirect_sectors = INDIRECT_BLOCK_PTRS;
     }
     inode_dealloc_indirect_block(&inode->ptr[i], num_indirect_sectors);
+    free_map_release(inode->ptr[i], 1);
     total_num_sectors -= num_indirect_sectors;
-    indirect_sectors--;
+    total_num_indirect_sectors--;
     i++;
   }
 
-  if (double_indirect_sector > 0) {
-      inode_dealloc_double_indirect_block(&inode->ptr[i], indirect_sectors, total_num_sectors);
+  /* Release the double direct blocks */
+  if (total_num_double_indirect_sector > 0) {
+    inode_dealloc_double_indirect_block(&inode->ptr[i], total_num_indirect_sectors, total_num_sectors);
   }
+}
+
+void inode_dealloc_indirect_block (block_sector_t *ptr, size_t total_num_indirect_sectors) {
+  struct indirect_block block;
+  unsigned int i;
+  block_read(fs_device, *ptr, &block);
+  for (i = 0; i < total_num_indirect_sectors; i++) {
+      free_map_release(block.ptr[i], 1);
+  }
+  return;
 }
 
 void inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs)
@@ -510,17 +523,7 @@ void inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_p
   free_map_release(*ptr, 1);
 }
 
-void inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs)
-{
-  unsigned int i;
-  struct indirect_block block;
-  block_read(fs_device, *ptr, &block);
-  for (i = 0; i < data_ptrs; i++)
-    {
-      free_map_release(block.ptr[i], 1);
-    }
-  free_map_release(*ptr, 1);
-}
+
 
 /* #########################################################
  * #############        INODE EXTENSION      ###############
