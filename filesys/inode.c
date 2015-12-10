@@ -87,6 +87,8 @@ void    inode_dealloc (iNode *inode);
 void    inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
 void    inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs);
 
+size_t  fill_in_direct_block (iNode *inode, size_t remaining_sectors_to_fill);
+
 /* ###########################################################
  * ##############     MATH FUNCTIONS       ###################
  * ###########################################################
@@ -516,25 +518,36 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
   // Find out how many more sectors we are expanding by
   // length after expansion vs current length
   size_t new_data_sectors = bytes_to_data_sectors(expanded_length) - bytes_to_data_sectors(inode->length);
+  static char zeros[BLOCK_SECTOR_SIZE];
 
   if (new_data_sectors == 0) {
     return expanded_length;
+  } else {
+    new_data_sectors = fill_in_direct_block(inode, new_data_sectors);
+    if (new_data_sectors == 0) {
+        return expanded_length;
+    }
   }
 
   /* We will slowly fill up the sectors of the inode from direct to double indirect */
 
   // Allocate a for a new direct block
   // NOTE: direct_index points to the next available slot
-  while (inode->direct_index < INDIRECT_INDEX_START) {
-      free_map_allocate (1, &inode->ptr[inode->direct_index]);
-      block_write (fs_device, inode->ptr[inode->direct_index], zeros);
-      inode->direct_index++;
-      new_data_sectors--;
-      if (new_data_sectors == 0) {
-        return expanded_length;
-      }
-  }
-
+  //while (inode->direct_index < INDIRECT_INDEX_START) {
+  //    free_map_allocate (1, &inode->ptr[inode->direct_index]);
+  //    block_write (fs_device, inode->ptr[inode->direct_index], zeros);
+  //    inode->direct_index++;
+  //    new_data_sectors--;
+  //    if (new_data_sectors == 0) {
+  //      return expanded_length;
+  //    }
+  //}
+  //new_data_sectors = fill_in_direct_block(inode, new_data_sectors);
+  //if (new_data_sectors == 0) {
+  //  return expanded_length;
+  //} else {
+  //  
+  //}
   // Allocate for a new indirect block
   while (inode->direct_index < DOUBLE_INDIRECT_INDEX_START) {
     new_data_sectors = inode_expand_indirect_block (inode, new_data_sectors);
@@ -550,7 +563,7 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
   return expanded_length - (new_data_sectors * BLOCK_SECTOR_SIZE);
 }
 
-off_t
+size_t
 fill_in_direct_block (iNode *inode, size_t remaining_data_sectors){
   static char buffer[BLOCK_SECTOR_SIZE];
   while (inode->direct_index < INDIRECT_INDEX_START) {
