@@ -478,7 +478,7 @@ inode_dealloc (iNode *inode) {
 
 void
 inode_dealloc_indirect_block (block_sector_t *ptr, size_t total_num_indirect_sectors) {
-  struct indirect_block block;
+  IndirectBlock block;
   unsigned int i;
   block_read(fs_device, *ptr, &block);
   for (i = 0; i < total_num_indirect_sectors; i++) {
@@ -489,7 +489,7 @@ inode_dealloc_indirect_block (block_sector_t *ptr, size_t total_num_indirect_sec
 
 void
 inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t total_num_indirect_sectors, size_t num_sectors) {
-  struct indirect_block block;
+  IndirectBlock block;
   unsigned int i;
   block_read(fs_device, *ptr, &block);
   size_t data_per_block;
@@ -550,7 +550,7 @@ inode_expand_indirect_block (iNode *inode, size_t remaining_data_sectors) {
   }
 
   static char buffer[BLOCK_SECTOR_SIZE];
-  struct indirect_block block;
+  IndirectBlock block;
   while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
     // If we haven't put anything into indirect before, we will now allocate a
     // a sector to it
@@ -593,7 +593,7 @@ inode_expand_double_indirect_block (iNode *inode, size_t remaining_data_sectors)
 
   if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
     // remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
-    struct indirect_block block;
+    IndirectBlock block;
 
     if (inode->level_two_index == 0 && inode->level_one_index == 0) { // If this is the first time reading into the double indirect level
         free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
@@ -613,13 +613,13 @@ inode_expand_double_indirect_block (iNode *inode, size_t remaining_data_sectors)
 }
 
 size_t
-inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t remaining_data_sectors, struct indirect_block* outer_block) {
+inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t remaining_data_sectors, IndirectBlock* outer_block) {
   if (remaining_data_sectors == 0){
     return 0;
   }
 
   static char buffer[BLOCK_SECTOR_SIZE];
-  struct indirect_block inner_block;
+  IndirectBlock inner_block;
 
   if (inode->level_two_index == 0) {
     free_map_allocate(1, &outer_block->ptr[inode->level_one_index]);
