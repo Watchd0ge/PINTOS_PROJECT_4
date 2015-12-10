@@ -49,13 +49,13 @@ struct inode {
   int             open_cnt;                   /* Number of openers. */
   bool            removed;                    /* True if deleted, false otherwise. */
   int             deny_write_cnt;             /* 0: writes ok, >0: deny writes. */
+  bool            is_dir;
+  block_sector_t  parent_inode;
   off_t           length;                     /* File size in bytes for extension purposes. */
   off_t           read_length;                /* Readable file length */
   size_t          level_zero_index;
   size_t          level_one_index;
   size_t          level_two_index;
-  bool            is_dir;
-  block_sector_t  parent_inode;
   struct lock     lock;
   block_sector_t  block_ptrs[INODE_BLOCK_PTRS];      /* Will be used as a holding cell for pointers to other sectors */
 };
@@ -661,22 +661,6 @@ inode_is_dir (const iNode *inode) {
 int
 inode_get_open_cnt (const iNode *inode) {
   return inode->open_cnt;
-}
-
-block_sector_t
-inode_get_parent_inode (const iNode *inode) {
-  return inode->parent_inode;
-}
-
-bool
-inode_add_parent_inode (block_sector_t parent_sector, block_sector_t child_sector) {
-  iNode *inode = inode_open(child_sector);
-  if (!inode) {
-      return false;
-  }
-  inode->parent_inode = parent_sector;
-  inode_close(inode);
-  return true;
 }
 
 /* ######################################################

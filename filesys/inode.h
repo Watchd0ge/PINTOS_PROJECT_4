@@ -27,8 +27,6 @@ void            inode_allow_write (iNode *);
 /* INODE SETTERS & GETTERS */
 off_t           inode_length (iNode *);
 int             inode_get_open_cnt (const iNode *inode);
-block_sector_t  inode_get_parent_inode (const iNode *inode);
-bool            inode_add_parent_inode (block_sector_t parent_sector, block_sector_t child_sector);
 void            inode_lock (const iNode *inode);
 void            inode_unlock (const iNode *inode);
 
