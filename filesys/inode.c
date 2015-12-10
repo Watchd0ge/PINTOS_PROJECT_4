@@ -97,14 +97,12 @@ size_t  inode_expand_direct_block  (iNode *inode, size_t remaining_sectors_to_fi
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
 static inline size_t
-bytes_to_data_sectors (off_t size)
-{
+bytes_to_data_sectors (off_t size) {
   return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
 }
 
 static size_t
-bytes_to_indirect_sectors (off_t size)
-{
+bytes_to_indirect_sectors (off_t size) {
   if (size <= BLOCK_SECTOR_SIZE*DIRECT_BLOCKS) {
     return 0;
   }
@@ -112,8 +110,8 @@ bytes_to_indirect_sectors (off_t size)
   return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE*INDIRECT_BLOCK_PTRS);
 }
 
-static size_t bytes_to_double_indirect_sector (off_t size)
-{
+static size_t
+bytes_to_double_indirect_sector (off_t size) {
   if (size <= BLOCK_SECTOR_SIZE *(DIRECT_BLOCKS + INDIRECT_BLOCKS * INDIRECT_BLOCK_PTRS)) {
     return 0;
   }
@@ -125,8 +123,7 @@ static size_t bytes_to_double_indirect_sector (off_t size)
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 static block_sector_t
-byte_to_sector (const iNode *inode, off_t inode_read_length, off_t offset)
-{
+byte_to_sector (const iNode *inode, off_t inode_read_length, off_t offset) {
   ASSERT (inode != NULL);
   if (offset < inode_read_length) { // If offset is valid
     uint32_t idx;
@@ -462,46 +459,43 @@ inode_allow_write (iNode *inode)
   inode->deny_write_cnt--;
 }
 
-/* Returns the length, in bytes, of INODE's data. */
-off_t
-inode_length (iNode *inode)
-{
-  return inode->length;
-}
+/* #########################################################
+ * ##############        INODE DEALLOC      ################
+ * #########################################################
+ */
 
 void inode_dealloc (iNode *inode)
 {
-  size_t data_sectors = bytes_to_data_sectors(inode->length);
-  size_t indirect_sectors = bytes_to_indirect_sectors(inode->length);
-  size_t double_indirect_sector = bytes_to_double_indirect_sector(
-						      inode->length);
-  unsigned int idx = 0;
-  while (data_sectors && idx < INDIRECT_INDEX_START)
-    {
-      free_map_release (inode->ptr[idx], 1);
-      data_sectors--;
-      idx++;
+  size_t total_num_sectors      = bytes_to_sectors (inode->length);
+  size_t indirect_sectors       = bytes_to_indirect_sectors (inode->length);
+  size_t double_indirect_sector = bytes_to_double_indirect_sector (inode->length);
+  unsigned int i = 0;
+
+  while (total_num_sectors > 0 && i < INDIRECT_INDEX_START) {
+      free_map_release (inode->ptr[i], 1);
+      total_num_sectors--;
+      i++;
+  }
+
+  while (indirect_sectors > 0 && i < DOUBLE_INDIRECT_INDEX_START){
+    size_t num_indirect_sectors;
+    if (total_num_sectors < INDIRECT_BLOCK_PTRS) {
+      num_indirect_sectors = total_num_sectors;
+    } else {
+      num_indirect_sectors = INDIRECT_BLOCK_PTRS;
     }
-  while (indirect_sectors && idx < DOUBLE_INDIRECT_INDEX_START)
-    {
-      size_t data_ptrs = data_sectors < INDIRECT_BLOCK_PTRS ? \
-	data_sectors : INDIRECT_BLOCK_PTRS;
-      inode_dealloc_indirect_block(&inode->ptr[idx], data_ptrs);
-      data_sectors -= data_ptrs;
-      indirect_sectors--;
-      idx++;
-    }
-  if (double_indirect_sector)
-    {
-      inode_dealloc_double_indirect_block(&inode->ptr[idx],
-					indirect_sectors,
-					data_sectors);
-    }
+    inode_dealloc_indirect_block(&inode->ptr[i], num_indirect_sectors);
+    total_num_sectors -= num_indirect_sectors;
+    indirect_sectors--;
+    i++;
+  }
+
+  if (double_indirect_sector > 0) {
+      inode_dealloc_double_indirect_block(&inode->ptr[i], indirect_sectors, total_num_sectors);
+  }
 }
 
-void inode_dealloc_double_indirect_block (block_sector_t *ptr,
-					  size_t indirect_ptrs,
-					  size_t data_ptrs)
+void inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs)
 {
   unsigned int i;
   struct indirect_block block;
@@ -516,8 +510,7 @@ void inode_dealloc_double_indirect_block (block_sector_t *ptr,
   free_map_release(*ptr, 1);
 }
 
-void inode_dealloc_indirect_block (block_sector_t *ptr,
-				   size_t data_ptrs)
+void inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs)
 {
   unsigned int i;
   struct indirect_block block;
@@ -534,19 +527,17 @@ void inode_dealloc_indirect_block (block_sector_t *ptr,
  * #########################################################
  */
 
-off_t inode_expand (iNode *inode, off_t expanded_length) {
+off_t
+inode_expand (iNode *inode, off_t expanded_length) {
   // Find out how many more sectors we are expanding by
   // length after expansion vs current length
   size_t remaining_data_sectors = bytes_to_data_sectors(expanded_length) - bytes_to_data_sectors(inode->length);
-  // static char buffer[BLOCK_SECTOR_SIZE];
-  //
-  // if (remaining_data_sectors == 0) {
-  //   return expanded_length;
-  // } else {
-    /* We will slowly fill up the sectors of the inode from direct to double indirect */
+
+  /* We will slowly fill up the sectors of the inode from direct to double indirect */
   remaining_data_sectors = inode_expand_direct_block (inode, remaining_data_sectors);
   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
   remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
+
   return expanded_length - (remaining_data_sectors * BLOCK_SECTOR_SIZE);
 }
 
@@ -674,6 +665,12 @@ inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t remaining_data_
  * #################      GETTERS & SETTERS     #####################
  * ##################################################################
  */
+
+ /* Returns the length, in bytes, of INODE's data. */
+off_t
+inode_length (iNode *inode) {
+  return inode->length;
+}
 
 bool
 inode_is_dir (const iNode *inode) {
