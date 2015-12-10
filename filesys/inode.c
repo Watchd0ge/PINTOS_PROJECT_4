@@ -25,9 +25,6 @@
 /* 8MB file restriction */
 #define MAX_FILE_SIZE 8388608
 
-/* On-disk inode.
-   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-
 /* ###########################################################
  * ##############     DATA STRUCTURES    #####################
  * ###########################################################
@@ -74,8 +71,10 @@ static struct list active_inodes;
  * ###########################################################
  */
 
-bool    inode_alloc (struct inode_disk *disk_inode);
+bool    inode_alloc (iDisk *disk_inode);
+
 off_t   inode_expand (iNode *inode, off_t new_length);
+size_t  inode_expand_direct_block  (iNode *inode, size_t remaining_sectors_to_fill);
 size_t  inode_expand_indirect_block (iNode *inode, size_t new_data_sectors);
 size_t  inode_expand_double_indirect_block (iNode *inode, size_t new_data_sectors);
 size_t  inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t new_data_sectors, struct indirect_block *outer_block);
@@ -84,7 +83,6 @@ void    inode_dealloc (iNode *inode);
 void    inode_dealloc_indirect_block (block_sector_t *ptr, size_t data_ptrs);
 void    inode_dealloc_double_indirect_block (block_sector_t *ptr, size_t indirect_ptrs, size_t data_ptrs);
 
-size_t  inode_expand_direct_block  (iNode *inode, size_t remaining_sectors_to_fill);
 
 /* ###########################################################
  * ##############     MATH FUNCTIONS       ###################
@@ -174,9 +172,10 @@ inode_create (block_sector_t sector, off_t file_length, bool is_dir) {
 
   d_node = calloc (1, sizeof *d_node);    // Create the disk version of our inode
   if (d_node != NULL) {
-    d_node->length = file_length;
-    if (d_node->length > MAX_FILE_SIZE) { // Truncate file if needed
+    if (file_length > MAX_FILE_SIZE) { // Truncate file if needed
       d_node->length = MAX_FILE_SIZE;
+    } else {
+      d_node->length = file_length;
     }
     d_node->magic = INODE_MAGIC;
     d_node->is_dir = is_dir;
