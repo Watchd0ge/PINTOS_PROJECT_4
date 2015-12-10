@@ -532,15 +532,14 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
 
   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
   // remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
-  // remaining_data_sectors = inode_expand_double_indirect_block_lvl_two (inode, remaining_data_sectors);
 
   // Allocate for a new indirect block
-  while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
-    remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
-    if (remaining_data_sectors == 0) {
-  	  return expanded_length;
-    }
-  }
+  // while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
+  //   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
+  //   if (remaining_data_sectors == 0) {
+  // 	  return expanded_length;
+  //   }
+  // }
 
   // Otherwise we will expand into the double indirect block
   if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
@@ -612,6 +611,9 @@ inode_expand_indirect_block (iNode *inode, size_t remaining_data_sectors) {
 
 size_t
 inode_expand_double_indirect_block (iNode *inode, size_t remaining_data_sectors) {
+  if (remaining_data_sectors == 0){
+    return 0;
+  }
   struct indirect_block block;
   if (inode->level_two_index == 0 && inode->level_one_index == 0) {
       free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
