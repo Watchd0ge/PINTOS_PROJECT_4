@@ -518,7 +518,7 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
   // Find out how many more sectors we are expanding by
   // length after expansion vs current length
   size_t remaining_data_sectors = bytes_to_data_sectors(expanded_length) - bytes_to_data_sectors(inode->length);
-  static char zeros[BLOCK_SECTOR_SIZE];
+  static char buffer[BLOCK_SECTOR_SIZE];
 
   if (remaining_data_sectors == 0) {
     return expanded_length;
@@ -531,7 +531,7 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
   }
 
   remaining_data_sectors = inode_expand_indirect_block (inode, remaining_data_sectors);
-  // remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
+  remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
 
   // Allocate for a new indirect block
   // while (inode->level_zero_index < DOUBLE_INDIRECT_INDEX_START) {
@@ -542,9 +542,9 @@ off_t inode_expand (iNode *inode, off_t expanded_length)
   // }
 
   // Otherwise we will expand into the double indirect block
-  if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
-    remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
-  }
+  // if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
+  //   remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
+  // }
   return expanded_length - (remaining_data_sectors * BLOCK_SECTOR_SIZE);
 }
 
@@ -614,54 +614,58 @@ inode_expand_double_indirect_block (iNode *inode, size_t remaining_data_sectors)
   if (remaining_data_sectors == 0){
     return 0;
   }
-  struct indirect_block block;
-  if (inode->level_two_index == 0 && inode->level_one_index == 0) {
-      free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
-  } else {
-    block_read(fs_device, inode->ptr[inode->level_zero_index], &block);
-  }
-  while (inode->level_one_index < INDIRECT_BLOCK_PTRS) {
-    remaining_data_sectors = inode_expand_double_indirect_block_lvl_two (inode, remaining_data_sectors, &block);
-    if (remaining_data_sectors == 0) {
-	    break;
+
+  if (inode->level_zero_index == DOUBLE_INDIRECT_INDEX_START) {
+    // remaining_data_sectors = inode_expand_double_indirect_block (inode, remaining_data_sectors);
+    struct indirect_block block;
+
+    if (inode->level_two_index == 0 && inode->level_one_index == 0) { // If this is the first time reading into the double indirect level
+        free_map_allocate(1, &inode->ptr[inode->level_zero_index]);
+    } else {
+      block_read(fs_device, inode->ptr[inode->level_zero_index], &block); // Else get the last not full one
     }
+
+    while (inode->level_one_index < INDIRECT_BLOCK_PTRS) {
+      remaining_data_sectors = inode_expand_double_indirect_block_lvl_two (inode, remaining_data_sectors, &block);
+      if (remaining_data_sectors == 0) {
+  	    break;
+      }
+    }
+    block_write(fs_device, inode->ptr[inode->level_zero_index], &block);
   }
-  block_write(fs_device, inode->ptr[inode->level_zero_index], &block);
   return remaining_data_sectors;
 }
 
 size_t
-inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t new_data_sectors, struct indirect_block* outer_block) {
-  static char zeros[BLOCK_SECTOR_SIZE];
+inode_expand_double_indirect_block_lvl_two (iNode *inode, size_t remaining_data_sectors, struct indirect_block* outer_block) {
+  if (remaining_data_sectors == 0){
+    return 0;
+  }
+
+  static char buffer[BLOCK_SECTOR_SIZE];
   struct indirect_block inner_block;
-  if (inode->level_two_index == 0)
-    {
-      free_map_allocate(1, &outer_block->ptr[inode->level_one_index]);
-    }
-  else
-    {
-      block_read(fs_device, outer_block->ptr[inode->level_one_index],
-		 &inner_block);
-    }
-  while (inode->level_two_index < INDIRECT_BLOCK_PTRS)
-    {
-      free_map_allocate(1, &inner_block.ptr[inode->level_two_index]);
-      block_write(fs_device, inner_block.ptr[inode->level_two_index],
-		  zeros);
-      inode->level_two_index++;
-      new_data_sectors--;
-      if (new_data_sectors == 0)
-	{
-	  break;
-	}
-    }
+
+  if (inode->level_two_index == 0) {
+    free_map_allocate(1, &outer_block->ptr[inode->level_one_index]);
+  } else {
+    block_read(fs_device, outer_block->ptr[inode->level_one_index], &inner_block);
+  }
+
+  while (inode->level_two_index < INDIRECT_BLOCK_PTRS) {
+    free_map_allocate(1, &inner_block.ptr[inode->level_two_index]);
+    block_write(fs_device, inner_block.ptr[inode->level_two_index], buffer);
+    inode->level_two_index++;
+    remaining_data_sectors--;
+    if (remaining_data_sectors == 0) {
+      break;
+	  }
+  }
   block_write(fs_device, outer_block->ptr[inode->level_one_index], &inner_block);
-  if (inode->level_two_index == INDIRECT_BLOCK_PTRS)
-    {
+  if (inode->level_two_index == INDIRECT_BLOCK_PTRS) {
       inode->level_two_index = 0;
       inode->level_one_index++;
-    }
-  return new_data_sectors;
+  }
+  return remaining_data_sectors;
 }
 
 
