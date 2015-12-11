@@ -358,33 +358,29 @@ inode_read_at (iNode *inode, void *buffer_, off_t size, off_t offset) {
    (Normally a write at end of file would extend the inode, but
    growth is not yet implemented.) */
 off_t
-inode_write_at (iNode *inode, const void *buffer_, off_t size, off_t offset)
-{
+inode_write_at (iNode *inode, const void *buffer_, off_t size, off_t offset) {
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
 
-  if (inode->deny_write_cnt)
+  // We can't write
+  if (inode->deny_write_cnt) {
     return 0;
+  }
 
-  if (offset + size > inode_length(inode))
-    {
-      if (!inode->is_dir)
-	{
-	  inode_lock(inode);
-	}
+  // Increase the size of the inode.
+  if (offset + size > inode_length(inode)) {
+      if (!inode->is_dir) {
+        inode_lock(inode);
+      }
       inode->length = inode_expand(inode, offset + size);
-      if (!inode->is_dir)
-	{
-	  inode_unlock(inode);
-	}
-    }
+      if (!inode->is_dir) {
+        inode_unlock(inode);
+      }
+  }
 
-  while (size > 0)
-    {
+  while (size > 0) {
       /* Sector to write, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode,
-						  inode_length(inode),
-						  offset);
+      block_sector_t sector_idx = byte_to_sector (inode, inode_length(inode), offset);
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -394,12 +390,12 @@ inode_write_at (iNode *inode, const void *buffer_, off_t size, off_t offset)
 
       /* Number of bytes to actually write into this sector. */
       int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0)
+      if (chunk_size <= 0) {
         break;
+      }
 
       CacheUnit *c = cache_get_block(sector_idx, true);
-      memcpy ((uint8_t *) &c->block + sector_ofs, buffer + bytes_written,
-	      chunk_size);
+      memcpy ((uint8_t *) &c->block + sector_ofs, buffer + bytes_written, chunk_size);
       c->accessed = true;
       c->dirty = true;
       c->open_cnt--;
@@ -408,7 +404,7 @@ inode_write_at (iNode *inode, const void *buffer_, off_t size, off_t offset)
       size -= chunk_size;
       offset += chunk_size;
       bytes_written += chunk_size;
-    }
+  }
 
   inode->read_length = inode_length(inode);
   return bytes_written;
